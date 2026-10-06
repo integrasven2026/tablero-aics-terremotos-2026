@@ -181,8 +181,14 @@ METAS_INDICADORES_AICS = {
 font_layout = dict(family='Quicksand', size=13)
 
 
+def limpiar_texto(texto):
+  if not texto or str(texto).lower() in ['none', 'nan', '']:
+    return 'No especificado'
+  return str(texto).strip().title()
+
+
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (USANDO RANGO_ETARIO Y SEXO)
+# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -217,11 +223,19 @@ def cargar_datos_kobo_api(
     else:
       sector = 'Protección'
 
-    estado_code = str(row.get('Estado') or row.get('estado') or '').strip()
+    estado_code = str(
+        row.get('Estado')
+        or row.get('estado')
+        or row.get('group_datos_loc/Estado')
+        or ''
+    ).strip()
     estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
 
     muni_code = str(
-        row.get('Municipio') or row.get('municipio') or ''
+        row.get('Municipio')
+        or row.get('municipio')
+        or row.get('group_datos_loc/Municipio')
+        or ''
     ).strip()
     muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
 
@@ -232,37 +246,45 @@ def cargar_datos_kobo_api(
         or row.get('_submission_time')
     )
 
-    # Procesar la segunda hoja / grupo repetido (group_beneficiario)
+    # Procesar la segunda hoja / grupo repetido de beneficiarios (group_beneficiario)
     beneficiarios = row.get('group_beneficiario', [])
     if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
       for idx, b in enumerate(beneficiarios):
-        cid = str(
-            b.get('CodigoID')
-            or b.get('N.º de Documento de Identidad')
-            or b.get('N_de_Documento_de_Identidad')
-            or ''
-        ).strip()
+        # Búsqueda robusta de claves dentro del grupo repetido
+        cid = ''
+        sexo_val = ''
+        rango_val = ''
+
+        for k, v in b.items():
+          k_lower = str(k).lower()
+          if 'codigoid' in k_lower or 'documento' in k_lower:
+            cid = str(v).strip()
+          elif 'sexo' in k_lower or 'genero' in k_lower:
+            sexo_val = str(v).strip()
+          elif 'rango_etario' in k_lower or 'resul_edad' in k_lower:
+            rango_val = str(v).strip()
+
         id_unico = (
             f'ID_{cid}'
             if cid and cid.lower() not in ['none', '', '0', 'nan']
             else f"ROW_{row.get('_id')}_{idx}"
         )
 
-        # Capturar Sexo
-        sexo_raw = str(b.get('Sexo') or '').lower().strip()
-        if 'muj' in sexo_raw or 'fem' in sexo_raw or sexo_raw == '2':
+        # Normalizar Sexo
+        sexo_lower = sexo_val.lower()
+        if 'muj' in sexo_lower or 'fem' in sexo_lower or sexo_lower == '2':
           sexo = 'Mujer'
-        elif 'hom' in sexo_raw or 'masc' in sexo_raw or sexo_raw == '1':
+        elif 'hom' in sexo_lower or 'masc' in sexo_lower or sexo_lower == '1':
           sexo = 'Hombre'
         else:
-          sexo = 'Mujer' if 'mujer' in sexo_raw else 'Hombre'
+          sexo = (
+              'Mujer'
+              if ('mujer' in sexo_lower or 'femenino' in sexo_lower)
+              else 'Hombre'
+          )
 
-        # Capturar Rango Etario directamente del formulario Kobo
-        rango_etario = str(
-            b.get('rango_etario') or b.get('resul_edad') or 'No especificado'
-        ).strip()
-        if not rango_etario or rango_etario.lower() == 'nan':
-          rango_etario = 'No especificado'
+        # Normalizar Rango Etario
+        rango_etario = limpiar_texto(rango_val)
 
         ind_val = '1.1'
         for col_i, val_i in row.items():
@@ -293,7 +315,7 @@ def cargar_datos_kobo_api(
           'Sector': sector,
           'ID_Unico': f"ROW_{row.get('_id')}_0",
           'Sexo': 'Hombre',
-          'Rango_Etario': '18 a 49 años',
+          'Rango_Etario': '18 A 49 Años',
           'Indicador': '1.1',
       })
 
@@ -330,7 +352,7 @@ st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
   st.warning(
-      '⚠️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
+      '⚠️️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
       ' token y conexión.'
   )
   st.stop()
@@ -536,5 +558,5 @@ if total_servicios := len(df_filtered) > 0:
 else:
   st.info(
       'No hay registros suficientes para calcular los indicadores con los'
-      ' filtros条件的 filtros actuales.'
+      ' filtros actuales.'
   )
