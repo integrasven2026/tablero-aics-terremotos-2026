@@ -252,6 +252,15 @@ def cargar_datos_kobo_api(
         ).strip()
         muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
 
+        # Extracción del nombre del campamento / refugio / establecimiento
+        campamento = (
+            row.get('Nombre de la comunidad o refugio')
+            or row.get('Nombre del establecimiento:')
+            or row.get('nombre_comunidad')
+            or 'No especificado'
+        )
+        campamento = str(campamento).strip()
+
         fecha = (
             row.get('Fecha de la Actividad:')
             or row.get('Fecha_de_la_Actividad')
@@ -329,6 +338,7 @@ def cargar_datos_kobo_api(
                         'Fecha': fecha,
                         'Estado': estado,
                         'Municipio': muni,
+                        'Campamento': campamento,
                         'Sector': sector,
                         'ID_Unico': id_unico,
                         'Sexo': sexo,
@@ -341,6 +351,7 @@ def cargar_datos_kobo_api(
                 'Fecha': fecha,
                 'Estado': estado,
                 'Municipio': muni,
+                'Campamento': campamento,
                 'Sector': sector,
                 'ID_Unico': f"ROW_{row.get('_id')}_0",
                 'Sexo': 'Mujer',
@@ -381,7 +392,7 @@ st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
     st.warning(
-        '⚠️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
+        '⚠️️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
         ' token y conexión.'
     )
     st.stop()
@@ -515,7 +526,7 @@ with g2:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# MAPA INTERACTIVO (CORREGIDO CON OPENSTREETMAP LIBRE)
+# MAPA INTERACTIVO (CON LISTADO DE CAMPAMENTOS / REFUGIOS EN EL POPUP)
 # -----------------------------------------------------------------------------
 st.subheader('Mapa de Cobertura por Municipios Atendidos')
 
@@ -524,28 +535,45 @@ mapa = folium.Map(
 )
 
 if total_unicos > 0:
-    muni_totales = (
-        df_unicos.groupby(['Estado', 'Municipio'])
-        .size()
-        .reset_index(name='Total_Unicos')
-    )
-    for _, m_row in muni_totales.iterrows():
+    # Agrupar por Estado y Municipio, recolectando la lista única de campamentos/refugios
+    muni_resumen = []
+    for (est, mun), grupo in df_unicos.groupby(['Estado', 'Municipio']):
+        tot = len(grupo)
+        campamentos = sorted(grupo['Campamento'].dropna().unique().tolist())
+        campamentos_str = "<br>".join([f"- {c}" for c in campamentos if c and c != 'No especificado'])
+        if not campamentos_str:
+            campamentos_str = "- No especificado"
+            
+        muni_resumen.append({
+            'Estado': est,
+            'Municipio': mun,
+            'Total_Unicos': tot,
+            'Campamentos': campamentos_str
+        })
+        
+    df_mapa = pd.DataFrame(muni_resumen)
+
+    for _, m_row in df_mapa.iterrows():
         est = m_row['Estado']
         mun = m_row['Municipio']
         tot = m_row['Total_Unicos']
+        camps = m_row['Campamentos']
         coords = COORDENADAS_MUNICIPIOS.get(mun, [10.5, -66.9])
 
         popup_html = f"""
-        <div style='font-family: Quicksand; font-size: 13px; width: 180px;'>
+        <div style='font-family: Quicksand; font-size: 13px; width: 220px;'>
             <h4 style='color: {COLOR_AZUL_COOPI}; margin-bottom: 5px;'>{mun}</h4>
             <b>Estado:</b> {est}<br>
-            <b>Participantes Únicos:</b> <b>{tot}</b>
+            <b>Participantes Únicos:</b> <b>{tot}</b><br>
+            <hr style='margin: 5px 0;'>
+            <b>Campamentos / Refugios:</b><br>
+            {camps}
         </div>
         """
         folium.CircleMarker(
             location=coords,
             radius=min(tot * 1.5, 25) + 8,
-            popup=folium.Popup(popup_html, max_width=200),
+            popup=folium.Popup(popup_html, max_width=250),
             color=COLOR_AZUL_COOPI,
             fill=True,
             fill_color=COLOR_AZUL_COOPI,
