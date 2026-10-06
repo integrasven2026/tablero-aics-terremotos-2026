@@ -267,23 +267,27 @@ def cargar_datos_kobo_api(
                 rango_val = ''
 
                 for k, v in b.items():
-                    k_lower = str(k).lower()
+                    k_str = str(k)
+                    k_lower = k_str.lower()
+                    
                     if 'codigoid' in k_lower or 'documento' in k_lower:
                         cid = str(v).strip()
-                    elif k_lower.endswith('sexo') or k_lower == 'sexo' or 'genero' in k_lower:
+                    elif k_lower == 'sexo' or k_lower.endswith('/sexo'):
                         sexo_val = str(v).strip()
-                    elif k_lower.endswith('rango_etario') or k_lower == 'rango_etario' or 'resul_edad' in k_lower:
+                    elif k_lower == 'rango_etario' or k_lower.endswith('/rango_etario') or 'resul_edad' in k_lower:
                         rango_val = str(v).strip()
 
-                # Si no encontró directamente, buscar en cualquier clave que contenga sexo/rango
+                # Respaldo de búsqueda si no se encontró por llave exacta
                 if not sexo_val:
                     for k, v in b.items():
-                        if 'sexo' in str(k).lower():
+                        k_l = str(k).lower()
+                        if 'sexo' in k_l and 'id_' not in k_l and 'count_' not in k_l:
                             sexo_val = str(v).strip()
                             break
                 if not rango_val:
                     for k, v in b.items():
-                        if 'rango_etario' in str(k).lower() or 'edad' in str(k).lower():
+                        k_l = str(k).lower()
+                        if ('rango_etario' in k_l or 'edad' in k_l) and 'count_' not in k_l:
                             rango_val = str(v).strip()
                             break
 
