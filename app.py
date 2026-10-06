@@ -252,14 +252,15 @@ def cargar_datos_kobo_api(
         ).strip()
         muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
 
-        # Extracción del nombre del campamento / refugio / establecimiento
-        campamento = (
-            row.get('Nombre de la comunidad o refugio')
-            or row.get('Nombre del establecimiento:')
-            or row.get('nombre_comunidad')
-            or 'No especificado'
-        )
-        campamento = str(campamento).strip()
+        # Búsqueda robusta de la comunidad, refugio o campamento en la API
+        campamento = 'No especificado'
+        for k, v in row.items():
+            k_l = str(k).lower()
+            if ('comunidad' in k_l or 'refugio' in k_l or 'establecimiento' in k_l) and pd.notnull(v):
+                val_str = str(v).strip()
+                if val_str and val_str.lower() not in ['none', 'nan', '']:
+                    campamento = val_str
+                    break
 
         fecha = (
             row.get('Fecha de la Actividad:')
@@ -526,7 +527,7 @@ with g2:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# MAPA INTERACTIVO (CON LISTADO DE CAMPAMENTOS / REFUGIOS EN EL POPUP)
+# MAPA INTERACTIVO (CON LISTADO DE CAMPAMENTOS / REFUGIOS)
 # -----------------------------------------------------------------------------
 st.subheader('Mapa de Cobertura por Municipios Atendidos')
 
@@ -535,12 +536,11 @@ mapa = folium.Map(
 )
 
 if total_unicos > 0:
-    # Agrupar por Estado y Municipio, recolectando la lista única de campamentos/refugios
     muni_resumen = []
     for (est, mun), grupo in df_unicos.groupby(['Estado', 'Municipio']):
         tot = len(grupo)
-        campamentos = sorted(grupo['Campamento'].dropna().unique().tolist())
-        campamentos_str = "<br>".join([f"- {c}" for c in campamentos if c and c != 'No especificado'])
+        campamentos = sorted([c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'])
+        campamentos_str = "<br>".join([f"- {c}" for c in campamentos])
         if not campamentos_str:
             campamentos_str = "- No especificado"
             
