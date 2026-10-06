@@ -130,6 +130,7 @@ MAPA_ESTADOS = {
 
 MAPA_MUNICIPIOS = {
     'VE0101': 'Libertador',
+    'VE1508': 'Cristobal Rojas',
     'VE1515': 'Paz Castillo',
     'VE1519': 'Sucre (Miranda)',
     'VE1520': 'Urdaneta',
