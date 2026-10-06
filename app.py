@@ -187,8 +187,17 @@ def limpiar_texto(texto):
   return str(texto).strip().title()
 
 
+def normalizar_sexo(valor):
+  s = str(valor).lower().strip()
+  if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2']):
+    return 'Mujer'
+  elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1']):
+    return 'Hombre'
+  return 'Mujer' if ('muj' in s or 'fem' in s) else 'Hombre'
+
+
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (PROCESAMIENTO DE CADENAS SEPARADAS POR COMAS)
+# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CON PARSER DE COMAS BLINDADO)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -262,7 +271,7 @@ def cargar_datos_kobo_api(
           elif 'rango_etario' in k_lower or 'resul_edad' in k_lower:
             rango_val = str(v).strip()
 
-        # Si vienen separados por comas en una sola cadena, los separamos en lista
+        # Separar por comas por si Kobo entrega cadenas concatenadas en el JSON
         lista_sexos = [s.strip() for s in sexo_val.split(',') if s.strip()]
         lista_rangos = [r.strip() for r in rango_val.split(',') if r.strip()]
 
@@ -286,17 +295,7 @@ def cargar_datos_kobo_api(
               else f"ROW_{row.get('_id')}_{idx}_{sub_i}"
           )
 
-          # Normalización de Sexo
-          s_lower = s_item.lower()
-          if any(x in s_lower for x in ['muj', 'fem', 'mujer', 'femenino', '2']):
-            sexo = 'Mujer'
-          elif any(
-              x in s_lower for x in ['hom', 'masc', 'hombre', 'masculino', '1']
-          ):
-            sexo = 'Hombre'
-          else:
-            sexo = 'Mujer' if 'muj' in s_lower else 'Hombre'
-
+          sexo = normalizar_sexo(s_item)
           rango_etario = limpiar_texto(r_item)
 
           ind_val = '1.1'
@@ -365,7 +364,7 @@ st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
   st.warning(
-      '⚠️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
+      '⚠️️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
       ' token y conexión.'
   )
   st.stop()
