@@ -188,7 +188,7 @@ def limpiar_texto(texto):
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (EXTRACCIÓN BLINDADA DE SEXO Y EDAD)
+# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CORRECCIÓN CRÍTICA DE SEXO)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -254,7 +254,7 @@ def cargar_datos_kobo_api(
         sexo_val = ''
         rango_val = ''
 
-        # Barrido flexible de llaves anidadas en Kobo
+        # Barrido flexible de llaves anidadas en Kobo (capturando cualquier ruta con 'sexo' o 'genero')
         for k, v in b.items():
           k_lower = str(k).lower()
           if 'codigoid' in k_lower or 'documento' in k_lower:
@@ -270,24 +270,22 @@ def cargar_datos_kobo_api(
             else f"ROW_{row.get('_id')}_{idx}"
         )
 
-        # Normalización robusta de Sexo (priorizando Mujer u Hombre)
+        # Normalización robusta y directa de Sexo
         sexo_lower = sexo_val.lower()
-        if (
-            'muj' in sexo_lower
-            or 'fem' in sexo_lower
-            or 'mujer' in sexo_lower
-            or sexo_lower == '2'
+        if any(
+            x in sexo_lower for x in ['muj', 'fem', 'mujer', 'femenino', '2']
         ):
           sexo = 'Mujer'
-        elif (
-            'hom' in sexo_lower
-            or 'masc' in sexo_lower
-            or 'hombre' in sexo_lower
-            or sexo_lower == '1'
+        elif any(
+            x in sexo_lower for x in ['hom', 'masc', 'hombre', 'masculino', '1']
         ):
           sexo = 'Hombre'
         else:
-          sexo = 'Mujer' if 'muj' in sexo_lower else 'Hombre'
+          sexo = (
+              'Mujer'
+              if ('muj' in sexo_lower or 'fem' in sexo_lower)
+              else 'Hombre'
+          )
 
         # Normalizar Rango Etario
         rango_etario = limpiar_texto(rango_val)
