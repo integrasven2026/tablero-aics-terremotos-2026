@@ -120,6 +120,9 @@ MAPA_ESTADOS = {
     'VE01': 'Distrito Capital',
     'VE15': 'Miranda',
     'VE24': 'La Guaira',
+    'Distrito Capital': 'Distrito Capital',
+    'Miranda': 'Miranda',
+    'La Guaira': 'La Guaira',
 }
 
 MAPA_MUNICIPIOS = {
@@ -176,7 +179,7 @@ font_layout = dict(family='Quicksand', size=13)
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (INCLUYENDO GRUPO REPETIDO)
+# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CON GRUPO REPETIDO BENEFICIARIOS)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_aics(
@@ -197,24 +200,31 @@ def cargar_datos_kobo_aics(
   registros = []
   for row in data:
     sector_raw = str(
-        row.get('Sector')
+        row.get('Resultado:')
+        or row.get('Sector')
         or row.get('resultado')
-        or row.get('group_datos_act/Sector')
         or ''
     ).lower()
-    if 'wash' in sector_raw or 'agua' in sector_raw or 'r1' in sector_raw:
+    if (
+        'wash' in sector_raw
+        or 'agua' in sector_raw
+        or 'resultado 1' in sector_raw
+    ):
       sector = 'WASH'
     else:
       sector = 'Protección'
 
-    estado_code = str(row.get('estado') or row.get('Estado') or '').strip()
+    estado_code = str(row.get('Estado') or row.get('estado') or '').strip()
     estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
 
-    muni_code = str(row.get('municipio') or row.get('Municipio') or '').strip()
+    muni_code = str(
+        row.get('Municipio') or row.get('municipio') or ''
+    ).strip()
     muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
 
     fecha = (
-        row.get('Fecha_de_la_Actividad')
+        row.get('Fecha de la Actividad:')
+        or row.get('Fecha_de_la_Actividad')
         or row.get('fecha')
         or row.get('_submission_time')
     )
@@ -224,11 +234,14 @@ def cargar_datos_kobo_aics(
     if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
       for idx, b in enumerate(beneficiarios):
         cid = str(
-            b.get('CodigoID') or b.get('N_de_Documento_de_Identidad') or ''
+            b.get('CodigoID')
+            or b.get('N.º de Documento de Identidad')
+            or b.get('N_de_Documento_de_Identidad')
+            or ''
         ).strip()
         id_unico = (
             f'ID_{cid}'
-            if cid and cid.lower() not in ['none', '', '0']
+            if cid and cid.lower() not in ['none', '', '0', 'nan']
             else f"ROW_{row.get('_id')}_{idx}"
         )
 
@@ -244,7 +257,7 @@ def cargar_datos_kobo_aics(
 
         try:
           edad = float(
-              b.get('Edad') or b.get('edad_anos') or b.get('edad_', 0)
+              b.get('edad_anos') or b.get('Edad') or b.get('edad_', 0)
           )
         except Exception:
           edad = 0
@@ -254,12 +267,14 @@ def cargar_datos_kobo_aics(
         else:
           grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
 
-        ind_val = str(
-            row.get('Indicadores')
-            or row.get('Indicadores_resultados')
-            or row.get('indicador')
-            or '1.1'
-        )
+        ind_val = '1.1'
+        for col_i, val_i in row.items():
+          if 'Indicador' in str(col_i) and pd.notnull(val_i):
+            txt_ind = str(val_i)
+            for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
+              if k_ind in txt_ind:
+                ind_val = k_ind
+                break
 
         registros.append({
             '_id': row.get('_id'),
