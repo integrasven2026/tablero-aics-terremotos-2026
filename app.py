@@ -94,7 +94,7 @@ with col_header_logo:
     except TypeError:
       st.image(logo_path, use_container_width=True)
   else:
-    st.warning("⚠️ No se encontró la imagen del logo en el repositorio.")
+    st.warning("⚠️️ No se encontró la imagen del logo en el repositorio.")
 
 st.markdown('---')
 
@@ -162,16 +162,14 @@ font_layout = dict(family='Quicksand', size=13)
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS MULTI-HOJA (EXCEL LOCAL O KOBOTOOLBOX)
+# CARGA DE DATOS ROBUSTA (EXCEL LOCAL O SUBIDO POR USUARIO)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
-def cargar_datos_completos():
-  excel_path = (
-      'AICS_-_SISTEMA_INTEGRAL_DE_GESTIÓN_DE_ASISTENCIA_-_SIGA_-_all_versions'
-      '-_labels_-_2026-10-06-15-32-42.xlsx'
-  )
-  if os.path.exists(excel_path):
-    xls = pd.ExcelFile(excel_path)
+def procesar_excel(file_source):
+  try:
+    xls = pd.ExcelFile(file_source)
+    if len(xls.sheet_names) < 2:
+      return pd.DataFrame()
     df_main = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
     df_sub = pd.read_excel(xls, sheet_name=xls.sheet_names[1])
 
@@ -273,11 +271,29 @@ def cargar_datos_completos():
     else:
       df['Mes_Reporte'] = 'Sin Fecha'
     return df
-  else:
+  except Exception:
     return pd.DataFrame()
 
 
-df_raw = cargar_datos_completos()
+# Buscar archivo local o permitir subirlo en la barra lateral si no existe
+excel_path = (
+    'AICS_-_SISTEMA_INTEGRAL_DE_GESTIÓN_DE_ASISTENCIA_-_SIGA_-_all_versions'
+    '-_labels_-_2026-10-06-15-32-42.xlsx'
+)
+df_raw = pd.DataFrame()
+
+if os.path.exists(excel_path):
+  df_raw = procesar_excel(excel_path)
+else:
+  st.sidebar.warning(
+      '⚠️ Sube el archivo Excel exportado de KoboToolbox para visualizar los'
+      ' datos.'
+  )
+  uploaded_file = st.sidebar.file_uploader(
+      'Cargar archivo Excel (.xlsx)', type=['xlsx']
+  )
+  if uploaded_file is not None:
+    df_raw = procesar_excel(uploaded_file)
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -289,6 +305,13 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
   st.rerun()
 
 st.sidebar.markdown('---')
+
+if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
+  st.warning(
+      'No hay datos cargados. Por favor asegúrate de que el archivo Excel'
+      ' esté en el repositorio o cárgalo mediante el menú lateral.'
+  )
+  st.stop()
 
 meses_disp = ['Todos'] + sorted(
     [m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha']
