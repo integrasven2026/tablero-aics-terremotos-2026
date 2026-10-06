@@ -200,6 +200,13 @@ def normalizar_sexo(valor):
     return 'Mujer'
 
 
+def normalizar_discapacidad(valor):
+    s = str(valor).lower().strip()
+    if any(x in s for x in ['sí', 'si', 'yes', '1', 'true']):
+        return 'Sí'
+    return 'No'
+
+
 # -----------------------------------------------------------------------------
 # 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (SEGUNDA HOJA / BENEFICIARIOS)
 # -----------------------------------------------------------------------------
@@ -252,7 +259,6 @@ def cargar_datos_kobo_api(
         ).strip()
         muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
 
-        # Búsqueda robusta de la comunidad, refugio o campamento en la API
         campamento = 'No especificado'
         for k, v in row.items():
             k_l = str(k).lower()
@@ -275,6 +281,7 @@ def cargar_datos_kobo_api(
                 cid = ''
                 sexo_val = ''
                 rango_val = ''
+                disc_val = 'No'
 
                 for k, v in b.items():
                     k_str = str(k)
@@ -285,6 +292,8 @@ def cargar_datos_kobo_api(
                         sexo_val = str(v).strip()
                     elif k_lower == 'rango_etario' or k_lower.endswith('/rango_etario') or 'resul_edad' in k_lower:
                         rango_val = str(v).strip()
+                    elif 'discapacidad' in k_lower:
+                        disc_val = str(v).strip()
 
                 if not sexo_val:
                     for k, v in b.items():
@@ -324,6 +333,7 @@ def cargar_datos_kobo_api(
 
                     sexo = normalizar_sexo(s_item)
                     rango_etario = limpiar_texto(r_item)
+                    discapacidad = normalizar_discapacidad(disc_val)
 
                     ind_val = '1.1'
                     for col_i, val_i in row.items():
@@ -344,6 +354,7 @@ def cargar_datos_kobo_api(
                         'ID_Unico': id_unico,
                         'Sexo': sexo,
                         'Rango_Etario': rango_etario,
+                        'Discapacidad': discapacidad,
                         'Indicador': ind_val,
                     })
         else:
@@ -357,6 +368,7 @@ def cargar_datos_kobo_api(
                 'ID_Unico': f"ROW_{row.get('_id')}_0",
                 'Sexo': 'Mujer',
                 'Rango_Etario': '18 A 49 Años',
+                'Discapacidad': 'No',
                 'Indicador': '1.1',
             })
 
@@ -393,7 +405,7 @@ st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
     st.warning(
-        '⚠️️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
+        '⚠ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
         ' token y conexión.'
     )
     st.stop()
@@ -439,6 +451,10 @@ conteo_sexo = df_unicos['Sexo'].value_counts() if not df_unicos.empty else pd.Se
 total_mujeres = conteo_sexo.get('Mujer', 0)
 total_hombres = conteo_sexo.get('Hombre', 0)
 
+conteo_disc = df_unicos['Discapacidad'].value_counts() if not df_unicos.empty else pd.Series()
+total_discapacidad = conteo_disc.get('Sí', 0)
+
+# Fila 1 de Métricas Generales
 col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
 col2.metric('Participantes Únicos', f'{total_unicos:,}')
@@ -448,9 +464,11 @@ col3.metric(
     delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
 )
 
-col_m, col_h = st.columns(2)
+# Fila 2 de Métricas Específicas (Mujeres, Hombres, Con Discapacidad)
+col_m, col_h, col_d = st.columns(3)
 col_m.metric('👥 Participantes Únicos: Mujeres', f'{total_mujeres:,}')
 col_h.metric('👥 Participantes Únicos: Hombres', f'{total_hombres:,}')
+col_d.metric('♿ Participantes con Discapacidad', f'{total_discapacidad:,}')
 
 st.markdown('---')
 
