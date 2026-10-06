@@ -292,7 +292,7 @@ def cargar_datos_kobo_api(
                         sexo_val = str(v).strip()
                     elif k_lower == 'rango_etario' or k_lower.endswith('/rango_etario') or 'resul_edad' in k_lower:
                         rango_val = str(v).strip()
-                    elif 'discapacidad' in k_lower and 'count_' not in k_lower:
+                    elif 'discapacidad' in k_lower:
                         disc_val = str(v).strip()
 
                 if not sexo_val:
@@ -464,11 +464,11 @@ col3.metric(
     delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
 )
 
-# Fila 2 de Métricas Específicas (Mujeres, Hombres, Con Discapacidad)
+# Fila 2 de Métricas Específicas (Mujeres, Hombres, Con Discapacidad - Sin íconos)
 col_m, col_h, col_d = st.columns(3)
-col_m.metric('👥 Participantes Únicos: Mujeres', f'{total_mujeres:,}')
-col_h.metric('👥 Participantes Únicos: Hombres', f'{total_hombres:,}')
-col_d.metric('♿ Participantes con Discapacidad', f'{total_discapacidad:,}')
+col_m.metric('Participantes Únicos: Mujeres', f'{total_mujeres:,}')
+col_h.metric('Participantes Únicos: Hombres', f'{total_hombres:,}')
+col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
 
 st.markdown('---')
 
