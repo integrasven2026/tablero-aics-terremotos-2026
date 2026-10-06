@@ -258,7 +258,6 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Acceso a la segunda hoja (grupo de beneficiarios repetitivo)
         beneficiarios = row.get('group_beneficiario', [])
         if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
             for idx, b in enumerate(beneficiarios):
@@ -269,7 +268,6 @@ def cargar_datos_kobo_api(
                 for k, v in b.items():
                     k_str = str(k)
                     k_lower = k_str.lower()
-                    
                     if 'codigoid' in k_lower or 'documento' in k_lower:
                         cid = str(v).strip()
                     elif k_lower == 'sexo' or k_lower.endswith('/sexo'):
@@ -277,7 +275,6 @@ def cargar_datos_kobo_api(
                     elif k_lower == 'rango_etario' or k_lower.endswith('/rango_etario') or 'resul_edad' in k_lower:
                         rango_val = str(v).strip()
 
-                # Respaldo de búsqueda si no se encontró por llave exacta
                 if not sexo_val:
                     for k, v in b.items():
                         k_l = str(k).lower()
@@ -457,6 +454,17 @@ with g1:
             .size()
             .reset_index(name='Cantidad')
         )
+        
+        # Mapeo de orden para los rangos etarios
+        orden_etario = {
+            '0 A 4 Años': 1,
+            '5 A 17 Años': 2,
+            '18 A 49 Años': 3,
+            '50 Años O Más': 4
+        }
+        df_demo['Orden'] = df_demo['Rango_Etario'].map(orden_etario).fillna(99)
+        df_demo = df_demo.sort_values('Orden')
+
         fig_demo = px.bar(
             df_demo,
             x='Rango_Etario',
@@ -472,6 +480,7 @@ with g1:
             font=font_layout,
             xaxis_title='Rango Etario',
             yaxis_title='Cantidad',
+            xaxis={'categoryorder': 'array', 'categoryarray': ['0 A 4 Años', '5 A 17 Años', '18 A 49 Años', '50 Años O Más']}
         )
         st.plotly_chart(fig_demo, width='stretch')
     else:
