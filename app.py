@@ -63,6 +63,7 @@ st.markdown(
 
 # -----------------------------------------------------------------------------
 # ENCABEZADO
+# -----------------------------------------------------------------------------
 st.markdown(
     "<h1 class='titulo-principal'>Tablero de Monitoreo Proyecto Intervención"
     ' de emergencia en respuesta a la crisis en Venezuela tras los terremotos'
@@ -72,12 +73,12 @@ st.markdown(
 )
 st.markdown(
     '**Financiador:** AICS (Agencia Italiana de Cooperación para el'
-    ' Desarrollo) | **Socio Ejecutor:** COOPI'
+    ' Desarrollo)[cite: 8] | **Socio Ejecutor:** COOPI[cite: 7]'
 )
 st.markdown('---')
 
-# METAS DEL PROYECTO
-META_PARTICIPANTES_UNICOS = 4200
+# METAS DEL PROYECTO (Actualizado a la meta oficial de 4,906 participantes)[cite: 38]
+META_PARTICIPANTES_UNICOS = 4906
 
 MESES_ES = {
     1: 'Enero',
@@ -328,7 +329,7 @@ col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
 col2.metric('Participantes Únicos', f'{total_unicos:,}')
 col3.metric(
-    '% Alcance de la Meta (4.200 pers.)',
+    '% Alcance de la Meta (4.906 pers.)',
     f'{pct_meta:.2f}%',
     delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
 )
