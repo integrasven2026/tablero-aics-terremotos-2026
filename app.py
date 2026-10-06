@@ -188,7 +188,7 @@ def limpiar_texto(texto):
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX
+# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CON EXTRACCIÓN ROBUSTA ANIDADA)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -250,11 +250,11 @@ def cargar_datos_kobo_api(
     beneficiarios = row.get('group_beneficiario', [])
     if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
       for idx, b in enumerate(beneficiarios):
-        # Búsqueda robusta de claves dentro del grupo repetido
         cid = ''
         sexo_val = ''
         rango_val = ''
 
+        # Búsqueda ultra robusta barriendo todas las llaves del diccionario del beneficiario
         for k, v in b.items():
           k_lower = str(k).lower()
           if 'codigoid' in k_lower or 'documento' in k_lower:
@@ -270,18 +270,24 @@ def cargar_datos_kobo_api(
             else f"ROW_{row.get('_id')}_{idx}"
         )
 
-        # Normalizar Sexo
+        # Normalizar Sexo de forma amplia para capturar Mujer y Hombre correctamente
         sexo_lower = sexo_val.lower()
-        if 'muj' in sexo_lower or 'fem' in sexo_lower or sexo_lower == '2':
+        if (
+            'muj' in sexo_lower
+            or 'fem' in sexo_lower
+            or sexo_lower == '2'
+            or 'femenino' in sexo_lower
+        ):
           sexo = 'Mujer'
-        elif 'hom' in sexo_lower or 'masc' in sexo_lower or sexo_lower == '1':
+        elif (
+            'hom' in sexo_lower
+            or 'masc' in sexo_lower
+            or sexo_lower == '1'
+            or 'masculino' in sexo_lower
+        ):
           sexo = 'Hombre'
         else:
-          sexo = (
-              'Mujer'
-              if ('mujer' in sexo_lower or 'femenino' in sexo_lower)
-              else 'Hombre'
-          )
+          sexo = 'Mujer' if 'mujer' in sexo_lower else 'Hombre'
 
         # Normalizar Rango Etario
         rango_etario = limpiar_texto(rango_val)
@@ -352,7 +358,7 @@ st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
   st.warning(
-      '⚠️️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
+      '⚠️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
       ' token y conexión.'
   )
   st.stop()
