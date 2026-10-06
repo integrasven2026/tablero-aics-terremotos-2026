@@ -136,6 +136,7 @@ COORDENADAS_MUNICIPIOS = {
     'Sucre (Miranda)': [10.4833, -66.8167],
     'Urdaneta': [10.1500, -66.8833],
     'Vargas': [10.6000, -66.9333],
+    'Cristobal Rojas': [10.2333, -66.6833],
 }
 
 MAPA_INDICADORES_AICS = {
@@ -175,12 +176,120 @@ font_layout = dict(family='Quicksand', size=13)
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE KOBOTOOLBOX
+# CARGA DE DATOS (API KOBOTOOLBOX O EXCEL LOCAL MULTI-HOJA)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
-def cargar_datos_kobo_aics(
+def cargar_datos_completos(
     asset_id, token, kobo_url='https://eu.kobotoolbox.org'
 ):
+  # 1. Intentar cargar desde el Excel local multi-hoja si existe en el repositorio
+  excel_path = (
+      'AICS_-_SISTEMA_INTEGRAL_DE_GESTIÓN_DE_ASISTENCIA_-_SIGA_-_all_versions'
+      '-_labels_-_2026-10-06-15-32-42.xlsx'
+  )
+  if os.path.exists(excel_path):
+    try:
+      xls = pd.ExcelFile(excel_path)
+      if len(xls.sheet_names) >= 2:
+        df_main = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+        df_sub = pd.read_excel(xls, sheet_name=xls.sheet_names[1])
+
+        df_main['parent_index'] = df_main['_index']
+        merged_df = pd.merge(
+            df_sub,
+            df_main,
+            left_on='_parent_index',
+            right_on='_index',
+            suffixes=('_sub', '_main'),
+        )
+
+        registros = []
+        for _, row in merged_df.iterrows():
+          sector_raw = str(
+              row.get('Resultado:') or row.get('Sector') or ''
+          ).lower()
+          if (
+              'wash' in sector_raw
+              or 'agua' in sector_raw
+              or 'resultado 1' in sector_raw
+          ):
+            sector = 'WASH'
+          else:
+            sector = 'Protección'
+
+          estado = str(row.get('Estado', 'Distrito Capital')).strip()
+          muni = str(row.get('Municipio', 'Libertador')).strip()
+          fecha = row.get('Fecha de la Actividad:') or row.get(
+              '_submission_time'
+          )
+
+          cid = str(
+              row.get('CodigoID')
+              or row.get('N.º de Documento de Identidad')
+              or ''
+          ).strip()
+          id_unico = (
+              f'ID_{cid}'
+              if cid and cid.lower() not in ['none', '', '0', 'nan']
+              else f"ROW_{row.get('_id_main')}_{row.get('_index')}"
+          )
+
+          sexo_raw = str(row.get('Sexo', 'Otro')).lower().strip()
+          if sexo_raw in ['femenino', 'f', 'mujer']:
+            sexo = 'Mujer'
+          elif sexo_raw in ['masculino', 'm', 'hombre']:
+            sexo = 'Hombre'
+          else:
+            sexo = 'Otro'
+
+          try:
+            edad = float(row.get('edad_anos', 0))
+          except Exception:
+            edad = 0
+
+          if edad < 18:
+            grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
+          else:
+            grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
+
+          ind_val = '1.1'
+          for col_i in row.index:
+            if 'Indicador' in str(col_i) and pd.notnull(row[col_i]):
+              txt_ind = str(row[col_i])
+              for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
+                if k_ind in txt_ind:
+                  ind_val = k_ind
+                  break
+
+          registros.append({
+              'Fecha': fecha,
+              'Estado': estado,
+              'Municipio': muni,
+              'Sector': sector,
+              'ID_Unico': id_unico,
+              'Sexo': sexo,
+              'Edad': edad,
+              'Grupo_Demografico': grupo_demo,
+              'Indicador': ind_val,
+          })
+
+        df = pd.DataFrame(registros)
+        if not df.empty and 'Fecha' in df.columns:
+          df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
+          df['Mes_Reporte'] = df['Fecha_DT'].apply(
+              lambda x: (
+                  f'{x.year} - {MESES_ES.get(x.month, "")}'
+                  if pd.notnull(x)
+                  else 'Sin Fecha'
+              )
+          )
+        else:
+          df['Mes_Reporte'] = 'Sin Fecha'
+        return df
+    except Exception:
+      pass
+
+  # 2. Si no hay archivo local, conectar a la API de KoboToolbox
   headers = {'Authorization': f'Token {token}'}
   url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
   try:
@@ -221,290 +330,13 @@ def cargar_datos_kobo_aics(
     beneficiarios = row.get('group_beneficiario', [])
     if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
       for idx, b in enumerate(beneficiarios):
-        b_info = base_registro(row, b, idx, sector, estado, muni, fecha)
-        registros.append(b_info)
-    else:
-      b_info = base_registro(row, {}, 0, sector, estado, muni, fecha)
-      registros.append(b_info)
-
-  df = pd.DataFrame(registros)
-  if not df.empty and 'Fecha' in df.columns:
-    df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
-    df['Mes_Reporte'] = df['Fecha_DT'].apply(
-        lambda x: (
-            f'{x.year} - {MESES_ES.get(x.month, "")}'
-            if pd.notnull(x)
-            else 'Sin Fecha'
+        cid = str(
+            b.get('CodigoID') or b.get('N_de_Documento_de_Identidad') or ''
+        ).strip()
+        id_unico = (
+            f'ID_{cid}'
+            if cid and cid.lower() not in ['none', '', '0']
+            else f"ROW_{row.get('_id')}_{idx}"
         )
-    )
-  else:
-    df['Mes_Reporte'] = 'Sin Fecha'
-  return df
 
-
-def base_registro(row, b, idx, sector, estado, muni, fecha):
-  cid = str(
-      b.get('CodigoID') or b.get('N_de_Documento_de_Identidad') or ''
-  ).strip()
-  id_unico = (
-      f'ID_{cid}'
-      if cid and cid.lower() not in ['none', '', '0']
-      else f"ROW_{row.get('_id')}_{idx}"
-  )
-
-  sexo_raw = str(
-      b.get('Sexo') or b.get('Genero') or row.get('Sexo') or ''
-  ).lower()
-  if sexo_raw in ['femenino', 'f', 'mujer']:
-    sexo = 'Mujer'
-  elif sexo_raw in ['masculino', 'm', 'hombre']:
-    sexo = 'Hombre'
-  else:
-    sexo = 'Otro'
-
-  try:
-    edad = float(b.get('Edad') or b.get('edad_', 0))
-  except Exception:
-    edad = 0
-
-  if edad < 18:
-    grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
-  else:
-    grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
-
-  ind_val = str(
-      row.get('Indicadores')
-      or row.get('Indicadores_resultados')
-      or row.get('indicador')
-      or '1.1'
-  )
-
-  return {
-      '_id': row.get('_id'),
-      'Fecha': fecha,
-      'Estado': estado,
-      'Municipio': muni,
-      'Sector': sector,
-      'ID_Unico': id_unico,
-      'Sexo': sexo,
-      'Edad': edad,
-      'Grupo_Demografico': grupo_demo,
-      'Indicador': ind_val,
-  }
-
-
-# Credenciales Kobo del proyecto AICS
-ASSET_ID_AICS = 'aBiwjqr5xDBwCMy9uTHDac'
-TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
-df_raw = cargar_datos_kobo_aics(ASSET_ID_AICS, TOKEN_AICS)
-
-# -----------------------------------------------------------------------------
-# FILTROS LATERALES
-# -----------------------------------------------------------------------------
-st.sidebar.header('Sincronización y Filtros')
-
-if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
-  st.cache_data.clear()
-  st.rerun()
-
-st.sidebar.markdown('---')
-
-meses_disp = ['Todos'] + sorted(
-    [m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha']
-)
-mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp)
-
-sectores_disp = ['Todos', 'WASH', 'Protección']
-sector_sel = st.sidebar.selectbox('Sector:', sectores_disp)
-
-sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
-sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp)
-
-grupo_demo_disp = ['Todos', 'Mujer', 'Hombre', 'Niña', 'Niño']
-grupo_demo_sel = st.sidebar.selectbox('Grupo Demográfico:', grupo_demo_disp)
-
-# Aplicar filtros
-df_filtered = df_raw.copy()
-if mes_sel != 'Todos':
-  df_filtered = df_filtered[df_filtered['Mes_Reporte'] == mes_sel]
-if sector_sel != 'Todos':
-  df_filtered = df_filtered[df_filtered['Sector'] == sector_sel]
-if sexo_sel != 'Todos':
-  df_filtered = df_filtered[df_filtered['Sexo'] == sexo_sel]
-if grupo_demo_sel != 'Todos':
-  df_filtered = df_filtered[df_filtered['Grupo_Demografico'] == grupo_demo_sel]
-
-# -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE
-# -----------------------------------------------------------------------------
-total_servicios = len(df_filtered)
-df_unicos = df_filtered.drop_duplicates(subset=['ID_Unico'])
-total_unicos = len(df_unicos)
-pct_meta = (
-    (total_unicos / META_PARTICIPANTES_UNICOS) * 100
-    if META_PARTICIPANTES_UNICOS > 0
-    else 0
-)
-
-col1, col2, col3 = st.columns(3)
-col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
-col2.metric('Participantes Únicos', f'{total_unicos:,}')
-col3.metric(
-    '% Alcance de la Meta (4.906 pers.)',
-    f'{pct_meta:.2f}%',
-    delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
-)
-
-st.markdown('---')
-
-# -----------------------------------------------------------------------------
-# GRÁFICOS: GRUPO ETARIO / SEXO Y MUNICIPIOS
-# -----------------------------------------------------------------------------
-g1, g2 = st.columns(2)
-
-with g1:
-  st.subheader('Participantes Únicos por Grupo Etario y Sexo')
-  if total_unicos > 0 and 'Grupo_Demografico' in df_unicos.columns:
-    df_demo = (
-        df_unicos.groupby('Grupo_Demografico')
-        .size()
-        .reset_index(name='Cantidad')
-    )
-    fig_demo = px.bar(
-        df_demo,
-        x='Grupo_Demografico',
-        y='Cantidad',
-        color='Grupo_Demografico',
-        text='Cantidad',
-        color_discrete_sequence=PALETA_COOPI,
-    )
-    fig_demo.update_traces(textposition='outside')
-    fig_demo.update_layout(
-        showlegend=False, font=font_layout, xaxis_title='Grupo Etario y Sexo'
-    )
-    st.plotly_chart(fig_demo, width='stretch')
-  else:
-    st.info('No hay datos disponibles para los filtros seleccionados.')
-
-with g2:
-  st.subheader('Participantes Únicos por Municipio')
-  if total_unicos > 0 and 'Municipio' in df_unicos.columns:
-    df_muni = (
-        df_unicos.groupby(['Estado', 'Municipio'])
-        .size()
-        .reset_index(name='Cantidad')
-    )
-    df_muni = df_muni.sort_values(by='Cantidad', ascending=True)
-    fig_muni = px.bar(
-        df_muni,
-        y='Municipio',
-        x='Cantidad',
-        color='Estado',
-        orientation='h',
-        text='Cantidad',
-        color_discrete_sequence=PALETA_COOPI,
-    )
-    fig_muni.update_traces(textposition='outside')
-    fig_muni.update_layout(
-        showlegend=True, font=font_layout, yaxis_title='Municipio'
-    )
-    st.plotly_chart(fig_muni, width='stretch')
-  else:
-    st.info('No hay datos disponibles.')
-
-st.markdown('---')
-
-# -----------------------------------------------------------------------------
-# MAPA INTERACTIVO
-# -----------------------------------------------------------------------------
-st.subheader('Mapa de Cobertura por Municipios Atendidos')
-
-mapa = folium.Map(
-    location=[10.35, -66.85], zoom_start=9, tiles='CartoDB positron'
-)
-
-if total_unicos > 0:
-  muni_totales = (
-      df_unicos.groupby(['Estado', 'Municipio'])
-      .size()
-      .reset_index(name='Total_Unicos')
-  )
-  for _, m_row in muni_totales.iterrows():
-    est = m_row['Estado']
-    mun = m_row['Municipio']
-    tot = m_row['Total_Unicos']
-    coords = COORDENADAS_MUNICIPIOS.get(mun, [10.5, -66.9])
-
-    popup_html = f"""
-        <div style='font-family: Quicksand; font-size: 12px; width: 160px;'>
-            <h4 style='color: {COLOR_AZUL_COOPI}; margin-bottom: 5px;'>{mun}</h4>
-            <b>Estado:</b> {est}<br>
-            <b>Participantes Únicos:</b> {tot}
-        </div>
-        """
-    folium.CircleMarker(
-        location=coords,
-        radius=min(tot * 2, 22) + 6,
-        popup=folium.Popup(popup_html, max_width=200),
-        color=COLOR_AZUL_COOPI,
-        fill=True,
-        fill_color=COLOR_AZUL_COOPI,
-        fill_opacity=0.75,
-    ).add_to(mapa)
-
-st_folium(mapa, width='stretch', height=400)
-
-st.markdown('---')
-
-# -----------------------------------------------------------------------------
-# ALCANCE DE LOS INDICADORES
-# -----------------------------------------------------------------------------
-st.subheader('Alcance de los Indicadores del Proyecto AICS')
-
-if total_servicios > 0:
-  records_ind = []
-  for _, row in df_filtered.iterrows():
-    cod = str(row.get('Indicador', '1.1')).strip()
-    records_ind.append({
-        'Codigo': cod,
-        'Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador {cod}'),
-        'ID_Unico': row.get('ID_Unico'),
-    })
-
-  df_ind = pd.DataFrame(records_ind)
-  summary_ind = (
-      df_ind.groupby(['Codigo', 'Indicador'])
-      .agg(Alcanzados=('ID_Unico', 'nunique'))
-      .reset_index()
-  )
-
-  metas_vals, porcentajes_avance = [], []
-  for _, r in summary_ind.iterrows():
-    c = r['Codigo']
-    meta_info = METAS_INDICADORES_AICS.get(c, {'meta': 100, 'tipo': 'numero'})
-    meta_val = meta_info['meta']
-    metas_vals.append(meta_val)
-    alc = (r['Alcanzados'] / meta_val) * 100 if meta_val > 0 else 0
-    porcentajes_avance.append(f'{alc:.1f}%')
-
-  summary_ind['Meta'] = metas_vals
-  summary_ind['% Avance'] = porcentajes_avance
-
-  fig_ind = px.bar(
-      summary_ind,
-      x='Indicador',
-      y='Alcanzados',
-      text='Alcanzados',
-      title='Avance por Indicador de Producto / Resultado',
-      color_discrete_sequence=[COLOR_VERDE_COOPI],
-  )
-  fig_ind.update_traces(textposition='outside')
-  fig_ind.update_layout(font=font_layout, xaxis_title='Indicador')
-  st.plotly_chart(fig_ind, width='stretch')
-
-  st.dataframe(summary_ind, width='stretch', hide_index=True)
-else:
-  st.info(
-      'No hay registros suficientes para calcular los indicadores con los'
-      ' filtros actuales.'
-  )
+        sexo_raw =
