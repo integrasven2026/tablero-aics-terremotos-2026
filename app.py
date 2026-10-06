@@ -10,19 +10,19 @@ import streamlit as st
 from streamlit_folium import st_folium
 
 # -----------------------------------------------------------------------------
-# PALETA DE COLORES OFICIAL CONSORCIO INTEGRAS / AICS
+# PALETA DE COLORES OFICIAL BASADA EN EL LOGO AICS (ROJO Y VERDE INSTITUCIONAL)
 # -----------------------------------------------------------------------------
+COLOR_ROJO_AICS = '#C62828'  # Rojo distintivo del logo AICS
+COLOR_VERDE_AICS = '#2E7D32'  # Verde distintivo del logo AICS
 COLOR_AGUAMARINA = '#17C3B2'
-COLOR_ROSADO_AAP = '#D89FE3'
-COLOR_VERDE_ABIERTO = '#28A745'
 COLOR_AMARILLO_MOSTAZA = '#E5B130'
 
 PALETA_INTEGRAS = [
+    COLOR_ROJO_AICS,
+    COLOR_VERDE_AICS,
     COLOR_AGUAMARINA,
-    COLOR_ROSADO_AAP,
     COLOR_AMARILLO_MOSTAZA,
     '#08327D',
-    '#0072CE',
 ]
 
 # -----------------------------------------------------------------------------
@@ -51,8 +51,8 @@ st.markdown(
 
     .titulo-principal {
         font-family: 'Montserrat', sans-serif !important;
-        color: #17C3B2 !important;
-        margin-bottom: 5px !important;
+        color: #C62828 !important;
+        margin-bottom: 10px !important;
         font-weight: 800 !important;
         font-size: 1.6rem !important;
     }
@@ -62,21 +62,16 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# ENCABEZADO CON LOGO Y TÍTULO
+# ENCABEZADO CON TÍTULO CORTO Y LOGO
 # -----------------------------------------------------------------------------
 col_header_title, col_header_logo = st.columns([3, 1])
 
 with col_header_title:
   st.markdown(
       "<h1 class='titulo-principal'>Tablero de Monitoreo Proyecto Intervención"
-      ' de emergencia en respuesta a la crisis en Venezuela tras los terremotos'
-      ' del 24 de junio de 2026 en Caracas, Miranda y La Guaira - Venezuela'
-      ' Proyecto AICS</h1>',
+      ' de emergencia en respuesta a la crisis en Venezuela tras los'
+      ' terremotos - Venezuela Proyecto AICS</h1>',
       unsafe_allow_html=True,
-  )
-  st.markdown(
-      '**Financiador:** AICS (Agencia Italiana de Cooperación para el'
-      ' Desarrollo)[cite: 8] | **Socio Ejecutor:** COOPI[cite: 7]'
   )
 
 with col_header_logo:
@@ -442,7 +437,7 @@ if total_unicos > 0:
 
     popup_html = f"""
         <div style='font-family: Quicksand; font-size: 12px; width: 160px;'>
-            <h4 style='color: {COLOR_AGUAMARINA}; margin-bottom: 5px;'>{mun}</h4>
+            <h4 style='color: {COLOR_ROJO_AICS}; margin-bottom: 5px;'>{mun}</h4>
             <b>Estado:</b> {est}<br>
             <b>Participantes Únicos:</b> {tot}
         </div>
@@ -451,9 +446,9 @@ if total_unicos > 0:
         location=coords,
         radius=min(tot * 2, 22) + 6,
         popup=folium.Popup(popup_html, max_width=200),
-        color=COLOR_AGUAMARINA,
+        color=COLOR_ROJO_AICS,
         fill=True,
-        fill_color=COLOR_AGUAMARINA,
+        fill_color=COLOR_ROJO_AICS,
         fill_opacity=0.75,
     ).add_to(mapa)
 
@@ -501,7 +496,7 @@ if total_servicios > 0:
       y='Alcanzados',
       text='Alcanzados',
       title='Avance por Indicador de Producto / Resultado',
-      color_discrete_sequence=['#08327D'],
+      color_discrete_sequence=[COLOR_VERDE_AICS],
   )
   fig_ind.update_traces(textposition='outside')
   fig_ind.update_layout(font=font_layout, xaxis_title='Indicador')
