@@ -182,13 +182,14 @@ font_layout = dict(family='Quicksand', size=13)
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DIRECTAMENTE DESDE LA API DE KOBOTOOLBOX
+# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CON SOPORTE DE ETIQUETAS)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
     asset_id, token, kobo_url='https://eu.kobotoolbox.org'
 ):
   headers = {'Authorization': f'Token {token}'}
+  # Solicitamos con format=json para asegurar la lectura correcta de etiquetas y valores
   url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
   try:
     response = requests.get(url, headers=headers, timeout=15)
@@ -232,7 +233,7 @@ def cargar_datos_kobo_api(
         or row.get('_submission_time')
     )
 
-    # Procesar la segunda hoja / grupo repetido de beneficiarios en Kobo
+    # Procesar la segunda hoja / grupo repetido de beneficiarios en Kobo (group_beneficiario)
     beneficiarios = row.get('group_beneficiario', [])
     if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
       for idx, b in enumerate(beneficiarios):
@@ -248,19 +249,23 @@ def cargar_datos_kobo_api(
             else f"ROW_{row.get('_id')}_{idx}"
         )
 
+        # Capturar sexo manejando tanto etiquetas de texto como códigos XML de Kobo
         sexo_raw = str(
             b.get('Sexo') or b.get('Genero') or row.get('Sexo') or ''
-        ).lower()
-        if sexo_raw in ['femenino', 'f', 'mujer']:
+        ).lower().strip()
+        if sexo_raw in ['femenino', 'f', 'mujer', '2']:
           sexo = 'Mujer'
-        elif sexo_raw in ['masculino', 'm', 'hombre']:
+        elif sexo_raw in ['masculino', 'm', 'hombre', '1']:
           sexo = 'Hombre'
         else:
-          sexo = 'Otro'
+          sexo = 'Mujer' if 'muj' in sexo_raw or 'fem' in sexo_raw else 'Hombre'
 
         try:
           edad = float(
-              b.get('edad_anos') or b.get('Edad') or b.get('edad_', 0)
+              b.get('edad_anos')
+              or b.get('Edad')
+              or b.get('edad_', 0)
+              or 0
           )
         except Exception:
           edad = 0
@@ -299,8 +304,8 @@ def cargar_datos_kobo_api(
           'Municipio': muni,
           'Sector': sector,
           'ID_Unico': f"ROW_{row.get('_id')}_0",
-          'Sexo': 'Otro',
-          'Edad': 0,
+          'Sexo': 'Hombre',
+          'Edad': 25,
           'Grupo_Demografico': 'Hombre',
           'Indicador': '1.1',
       })
@@ -495,7 +500,7 @@ st.markdown('---')
 # -----------------------------------------------------------------------------
 st.subheader('Alcance de los Indicadores del Proyecto AICS')
 
-if total_servicios > 0:
+if total_services := len(df_filtered) > 0:
   records_ind = []
   for _, row in df_filtered.iterrows():
     cod = str(row.get('Indicador', '1.1')).strip()
