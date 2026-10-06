@@ -196,11 +196,11 @@ def normalizar_sexo(valor):
         return 'Mujer'
     elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1']):
         return 'Hombre'
-    return 'Mujer' if ('muj' in s or 'fem' in s) else 'Hombre'
+    return 'Mujer'
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (PROCESAMIENTO DE COMAS)
+# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (SEGUNDA HOJA / BENEFICIARIOS)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -258,6 +258,7 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
+        # Acceso a la segunda hoja (grupo de beneficiarios repetitivo)
         beneficiarios = row.get('group_beneficiario', [])
         if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
             for idx, b in enumerate(beneficiarios):
@@ -269,12 +270,23 @@ def cargar_datos_kobo_api(
                     k_lower = str(k).lower()
                     if 'codigoid' in k_lower or 'documento' in k_lower:
                         cid = str(v).strip()
-                    elif 'sexo' in k_lower or 'genero' in k_lower:
+                    elif k_lower.endswith('sexo') or k_lower == 'sexo' or 'genero' in k_lower:
                         sexo_val = str(v).strip()
-                    elif 'rango_etario' in k_lower or 'resul_edad' in k_lower:
+                    elif k_lower.endswith('rango_etario') or k_lower == 'rango_etario' or 'resul_edad' in k_lower:
                         rango_val = str(v).strip()
 
-                # Desglose estricto por comas tal como se muestra en la base de datos de Kobo
+                # Si no encontró directamente, buscar en cualquier clave que contenga sexo/rango
+                if not sexo_val:
+                    for k, v in b.items():
+                        if 'sexo' in str(k).lower():
+                            sexo_val = str(v).strip()
+                            break
+                if not rango_val:
+                    for k, v in b.items():
+                        if 'rango_etario' in str(k).lower() or 'edad' in str(k).lower():
+                            rango_val = str(v).strip()
+                            break
+
                 lista_sexos = [s.strip() for s in sexo_val.split(',') if s.strip()]
                 lista_rangos = [r.strip() for r in rango_val.split(',') if r.strip()]
 
@@ -409,12 +421,10 @@ pct_meta = (
     else 0
 )
 
-# Conteo por Sexo en Participantes Únicos
 conteo_sexo = df_unicos['Sexo'].value_counts() if not df_unicos.empty else pd.Series()
 total_mujeres = conteo_sexo.get('Mujer', 0)
 total_hombres = conteo_sexo.get('Hombre', 0)
 
-# Fila 1 de Métricas Generales
 col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
 col2.metric('Participantes Únicos', f'{total_unicos:,}')
@@ -424,7 +434,6 @@ col3.metric(
     delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
 )
 
-# Fila 2 de Métricas Específicas por Género
 col_m, col_h = st.columns(2)
 col_m.metric('👥 Participantes Únicos: Mujeres', f'{total_mujeres:,}')
 col_h.metric('👥 Participantes Únicos: Hombres', f'{total_hombres:,}')
