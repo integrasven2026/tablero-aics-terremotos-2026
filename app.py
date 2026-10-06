@@ -179,128 +179,223 @@ font_layout = dict(family='Quicksand', size=13)
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CON GRUPO REPETIDO BENEFICIARIOS)
+# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CON SOPORTE LOCAL DE RESPALDO)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
-def cargar_datos_kobo_aics(
+def cargar_datos_kobo_o_local(
     asset_id, token, kobo_url='https://eu.kobotoolbox.org'
 ):
+  registros = []
+  data = []
+
+  # 1. Intentar conectar a la API de KoboToolbox
   headers = {'Authorization': f'Token {token}'}
   url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
   try:
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-      return pd.DataFrame()
-    data = response.json().get('results', [])
-    if not data:
-      return pd.DataFrame()
+    response = requests.get(url, headers=headers, timeout=10)
+    if response.status_code == 200:
+      data = response.json().get('results', [])
   except Exception:
-    return pd.DataFrame()
+    pass
 
-  registros = []
-  for row in data:
-    sector_raw = str(
-        row.get('Resultado:')
-        or row.get('Sector')
-        or row.get('resultado')
-        or ''
-    ).lower()
-    if (
-        'wash' in sector_raw
-        or 'agua' in sector_raw
-        or 'resultado 1' in sector_raw
-    ):
-      sector = 'WASH'
-    else:
-      sector = 'Protección'
-
-    estado_code = str(row.get('Estado') or row.get('estado') or '').strip()
-    estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
-
-    muni_code = str(
-        row.get('Municipio') or row.get('municipio') or ''
-    ).strip()
-    muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
-
-    fecha = (
-        row.get('Fecha de la Actividad:')
-        or row.get('Fecha_de_la_Actividad')
-        or row.get('fecha')
-        or row.get('_submission_time')
+  # 2. Si la API no retorna datos, intentar leer del archivo Excel local como respaldo
+  if not data:
+    excel_path = (
+        'AICS_-_SISTEMA_INTEGRAL_DE_GESTIÓN_DE_ASISTENCIA_-_SIGA_-_all_versions'
+        '-_labels_-_2026-10-06-15-32-42.xlsx'
     )
-
-    # Extraer participantes de la segunda hoja / grupo repetido (group_beneficiario)
-    beneficiarios = row.get('group_beneficiario', [])
-    if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
-      for idx, b in enumerate(beneficiarios):
-        cid = str(
-            b.get('CodigoID')
-            or b.get('N.º de Documento de Identidad')
-            or b.get('N_de_Documento_de_Identidad')
-            or ''
-        ).strip()
-        id_unico = (
-            f'ID_{cid}'
-            if cid and cid.lower() not in ['none', '', '0', 'nan']
-            else f"ROW_{row.get('_id')}_{idx}"
-        )
-
-        sexo_raw = str(
-            b.get('Sexo') or b.get('Genero') or row.get('Sexo') or ''
-        ).lower()
-        if sexo_raw in ['femenino', 'f', 'mujer']:
-          sexo = 'Mujer'
-        elif sexo_raw in ['masculino', 'm', 'hombre']:
-          sexo = 'Hombre'
-        else:
-          sexo = 'Otro'
-
-        try:
-          edad = float(
-              b.get('edad_anos') or b.get('Edad') or b.get('edad_', 0)
+    if os.path.exists(excel_path):
+      try:
+        xls = pd.ExcelFile(excel_path)
+        if len(xls.sheet_names) >= 2:
+          df_main = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+          df_sub = pd.read_excel(xls, sheet_name=xls.sheet_names[1])
+          df_main['parent_index'] = df_main['_index']
+          merged_df = pd.merge(
+              df_sub,
+              df_main,
+              left_on='_parent_index',
+              right_on='_index',
+              suffixes=('_sub', '_main'),
           )
-        except Exception:
-          edad = 0
 
-        if edad < 18:
-          grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
-        else:
-          grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
+          for _, row in merged_df.iterrows():
+            sector_raw = str(
+                row.get('Resultado:') or row.get('Sector') or ''
+            ).lower()
+            sector = (
+                'WASH'
+                if (
+                    'wash' in sector_raw
+                    or 'agua' in sector_raw
+                    or 'resultado 1' in sector_raw
+                )
+                else 'Protección'
+            )
+            estado = str(row.get('Estado', 'Distrito Capital')).strip()
+            muni = str(row.get('Municipio', 'Libertador')).strip()
+            fecha = row.get('Fecha de la Actividad:') or row.get(
+                '_submission_time'
+            )
 
-        ind_val = '1.1'
-        for col_i, val_i in row.items():
-          if 'Indicador' in str(col_i) and pd.notnull(val_i):
-            txt_ind = str(val_i)
-            for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
-              if k_ind in txt_ind:
-                ind_val = k_ind
-                break
+            cid = str(
+                row.get('CodigoID')
+                or row.get('N.º de Documento de Identidad')
+                or ''
+            ).strip()
+            id_unico = (
+                f'ID_{cid}'
+                if cid and cid.lower() not in ['none', '', '0', 'nan']
+                else f"ROW_{row.get('_id_main')}_{row.get('_index')}"
+            )
 
+            sexo_raw = str(row.get('Sexo', 'Otro')).lower().strip()
+            if sexo_raw in ['femenino', 'f', 'mujer']:
+              sexo = 'Mujer'
+            elif sexo_raw in ['masculino', 'm', 'hombre']:
+              sexo = 'Hombre'
+            else:
+              sexo = 'Otro'
+
+            try:
+              edad = float(row.get('edad_anos', 0))
+            except Exception:
+              edad = 0
+
+            if edad < 18:
+              grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
+            else:
+              grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
+
+            ind_val = '1.1'
+            for col_i, val_i in row.items():
+              if 'Indicador' in str(col_i) and pd.notnull(val_i):
+                txt_ind = str(val_i)
+                for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
+                  if k_ind in txt_ind:
+                    ind_val = k_ind
+                    break
+
+            registros.append({
+                'Fecha': fecha,
+                'Estado': estado,
+                'Municipio': muni,
+                'Sector': sector,
+                'ID_Unico': id_unico,
+                'Sexo': sexo,
+                'Edad': edad,
+                'Grupo_Demografico': grupo_demo,
+                'Indicador': ind_val,
+            })
+      except Exception:
+        pass
+
+  # 3. Procesar datos obtenidos desde la API de KoboToolbox
+  if data:
+    for row in data:
+      sector_raw = str(
+          row.get('Resultado:')
+          or row.get('Sector')
+          or row.get('resultado')
+          or ''
+      ).lower()
+      sector = (
+          'WASH'
+          if (
+              'wash' in sector_raw
+              or 'agua' in sector_raw
+              or 'resultado 1' in sector_raw
+          )
+          else 'Protección'
+      )
+
+      estado_code = str(row.get('Estado') or row.get('estado') or '').strip()
+      estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
+
+      muni_code = str(
+          row.get('Municipio') or row.get('municipio') or ''
+      ).strip()
+      muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
+
+      fecha = (
+          row.get('Fecha de la Actividad:')
+          or row.get('Fecha_de_la_Actividad')
+          or row.get('fecha')
+          or row.get('_submission_time')
+      )
+
+      # Procesar hoja de participantes anidada (group_beneficiario)
+      beneficiarios = row.get('group_beneficiario', [])
+      if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
+        for idx, b in enumerate(beneficiarios):
+          cid = str(
+              b.get('CodigoID')
+              or b.get('N.º de Documento de Identidad')
+              or b.get('N_de_Documento_de_Identidad')
+              or ''
+          ).strip()
+          id_unico = (
+              f'ID_{cid}'
+              if cid and cid.lower() not in ['none', '', '0', 'nan']
+              else f"ROW_{row.get('_id')}_{idx}"
+          )
+
+          sexo_raw = str(
+              b.get('Sexo') or b.get('Genero') or row.get('Sexo') or ''
+          ).lower()
+          if sexo_raw in ['femenino', 'f', 'mujer']:
+            sexo = 'Mujer'
+          elif sexo_raw in ['masculino', 'm', 'hombre']:
+            sexo = 'Hombre'
+          else:
+            sexo = 'Otro'
+
+          try:
+            edad = float(
+                b.get('edad_anos') or b.get('Edad') or b.get('edad_', 0)
+            )
+          except Exception:
+            edad = 0
+
+          if edad < 18:
+            grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
+          else:
+            grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
+
+          ind_val = '1.1'
+          for col_i, val_i in row.items():
+            if 'Indicador' in str(col_i) and pd.notnull(val_i):
+              txt_ind = str(val_i)
+              for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
+                if k_ind in txt_ind:
+                  ind_val = k_ind
+                  break
+
+          registros.append({
+              '_id': row.get('_id'),
+              'Fecha': fecha,
+              'Estado': estado,
+              'Municipio': muni,
+              'Sector': sector,
+              'ID_Unico': id_unico,
+              'Sexo': sexo,
+              'Edad': edad,
+              'Grupo_Demografico': grupo_demo,
+              'Indicador': ind_val,
+          })
+      else:
         registros.append({
             '_id': row.get('_id'),
             'Fecha': fecha,
             'Estado': estado,
             'Municipio': muni,
             'Sector': sector,
-            'ID_Unico': id_unico,
-            'Sexo': sexo,
-            'Edad': edad,
-            'Grupo_Demografico': grupo_demo,
-            'Indicador': ind_val,
+            'ID_Unico': f"ROW_{row.get('_id')}_0",
+            'Sexo': 'Otro',
+            'Edad': 0,
+            'Grupo_Demografico': 'Hombre',
+            'Indicador': '1.1',
         })
-    else:
-      registros.append({
-          '_id': row.get('_id'),
-          'Fecha': fecha,
-          'Estado': estado,
-          'Municipio': muni,
-          'Sector': sector,
-          'ID_Unico': f"ROW_{row.get('_id')}_0",
-          'Sexo': 'Otro',
-          'Edad': 0,
-          'Grupo_Demografico': 'Hombre',
-          'Indicador': '1.1',
-      })
 
   df = pd.DataFrame(registros)
   if not df.empty and 'Fecha' in df.columns:
@@ -320,7 +415,7 @@ def cargar_datos_kobo_aics(
 # Credenciales Kobo del proyecto AICS
 ASSET_ID_AICS = 'aBiwjqr5xDBwCMy9uTHDac'
 TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
-df_raw = cargar_datos_kobo_aics(ASSET_ID_AICS, TOKEN_AICS)
+df_raw = cargar_datos_kobo_o_local(ASSET_ID_AICS, TOKEN_AICS)
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -335,8 +430,8 @@ st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
   st.warning(
-      '⚠️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
-      ' conexión o permisos del proyecto.'
+      '⚠️ No se pudieron cargar datos. Verifica la conexión a KoboToolbox o la'
+      ' presencia del archivo de respaldo.'
   )
   st.stop()
 
