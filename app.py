@@ -54,7 +54,7 @@ st.markdown(
         color: #17C3B2 !important;
         margin-bottom: 5px !important;
         font-weight: 800 !important;
-        font-size: 1.8rem !important;
+        font-size: 1.6rem !important;
     }
     </style>
 """,
@@ -62,22 +62,48 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# ENCABEZADO
+# ENCABEZADO CON LOGO Y TÍTULO
 # -----------------------------------------------------------------------------
-st.markdown(
-    "<h1 class='titulo-principal'>Tablero de Monitoreo Proyecto Intervención"
-    ' de emergencia en respuesta a la crisis en Venezuela tras los terremotos'
-    ' del 24 de junio de 2026 en Caracas, Miranda y La Guaira - Venezuela'
-    ' Proyecto AICS</h1>',
-    unsafe_allow_html=True,
-)
-st.markdown(
-    '**Financiador:** AICS (Agencia Italiana de Cooperación para el'
-    ' Desarrollo)[cite: 8] | **Socio Ejecutor:** COOPI[cite: 7]'
-)
+col_header_title, col_header_logo = st.columns([3, 1])
+
+with col_header_title:
+  st.markdown(
+      "<h1 class='titulo-principal'>Tablero de Monitoreo Proyecto Intervención"
+      ' de emergencia en respuesta a la crisis en Venezuela tras los terremotos'
+      ' del 24 de junio de 2026 en Caracas, Miranda y La Guaira - Venezuela'
+      ' Proyecto AICS</h1>',
+      unsafe_allow_html=True,
+  )
+  st.markdown(
+      '**Financiador:** AICS (Agencia Italiana de Cooperación para el'
+      ' Desarrollo)[cite: 8] | **Socio Ejecutor:** COOPI[cite: 7]'
+  )
+
+with col_header_logo:
+  posibles_nombres = [
+      'AICS.jpeg',
+      'aics.jpeg',
+      'AICS.jpg',
+      'aics.jpg',
+      'AICS_logo.jpeg',
+  ]
+  logo_path = None
+  for nombre in posibles_nombres:
+    if os.path.exists(nombre):
+      logo_path = nombre
+      break
+
+  if logo_path:
+    try:
+      st.image(logo_path, width='stretch')
+    except TypeError:
+      st.image(logo_path, use_container_width=True)
+  else:
+    st.warning("⚠️ No se encontró la imagen 'AICS.jpeg' en el repositorio.")
+
 st.markdown('---')
 
-# METAS DEL PROYECTO (Actualizado a la meta oficial de 4,906 participantes)[cite: 38]
+# METAS DEL PROYECTO (Meta oficial de participantes únicos: 4.906)[cite: 38]
 META_PARTICIPANTES_UNICOS = 4906
 
 MESES_ES = {
