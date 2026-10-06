@@ -1,4 +1,4 @@
-import io
+   import io
 import os
 import re
 import folium
@@ -94,7 +94,7 @@ with col_header_logo:
     except TypeError:
       st.image(logo_path, use_container_width=True)
   else:
-    st.warning("⚠️ No se encontró la imagen del logo en el repositorio.")
+    st.warning("⚠️️ No se encontró la imagen del logo en el repositorio.")
 
 st.markdown('---')
 
@@ -176,241 +176,120 @@ font_layout = dict(family='Quicksand', size=13)
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS (API KOBOTOOLBOX O EXCEL LOCAL MULTI-HOJA)
+# CARGA DE DATOS DESDE EL EXCEL MULTI-HOJA DE KOBO
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
-def cargar_datos_completos(
-    asset_id, token, kobo_url='https://eu.kobotoolbox.org'
-):
-  # 1. Intentar cargar desde el Excel local multi-hoja si existe en el repositorio
+def cargar_datos_excel_kobo():
   excel_path = (
       'AICS_-_SISTEMA_INTEGRAL_DE_GESTIÓN_DE_ASISTENCIA_-_SIGA_-_all_versions'
       '-_labels_-_2026-10-06-15-32-42.xlsx'
   )
-  if os.path.exists(excel_path):
-    try:
-      xls = pd.ExcelFile(excel_path)
-      if len(xls.sheet_names) >= 2:
-        df_main = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
-        df_sub = pd.read_excel(xls, sheet_name=xls.sheet_names[1])
-
-        df_main['parent_index'] = df_main['_index']
-        merged_df = pd.merge(
-            df_sub,
-            df_main,
-            left_on='_parent_index',
-            right_on='_index',
-            suffixes=('_sub', '_main'),
-        )
-
-        registros = []
-        for _, row in merged_df.iterrows():
-          sector_raw = str(
-              row.get('Resultado:') or row.get('Sector') or ''
-          ).lower()
-          if (
-              'wash' in sector_raw
-              or 'agua' in sector_raw
-              or 'resultado 1' in sector_raw
-          ):
-            sector = 'WASH'
-          else:
-            sector = 'Protección'
-
-          estado = str(row.get('Estado', 'Distrito Capital')).strip()
-          muni = str(row.get('Municipio', 'Libertador')).strip()
-          fecha = row.get('Fecha de la Actividad:') or row.get(
-              '_submission_time'
-          )
-
-          cid = str(
-              row.get('CodigoID')
-              or row.get('N.º de Documento de Identidad')
-              or ''
-          ).strip()
-          id_unico = (
-              f'ID_{cid}'
-              if cid and cid.lower() not in ['none', '', '0', 'nan']
-              else f"ROW_{row.get('_id_main')}_{row.get('_index')}"
-          )
-
-          sexo_raw = str(row.get('Sexo', 'Otro')).lower().strip()
-          if sexo_raw in ['femenino', 'f', 'mujer']:
-            sexo = 'Mujer'
-          elif sexo_raw in ['masculino', 'm', 'hombre']:
-            sexo = 'Hombre'
-          else:
-            sexo = 'Otro'
-
-          try:
-            edad = float(row.get('edad_anos', 0))
-          except Exception:
-            edad = 0
-
-          if edad < 18:
-            grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
-          else:
-            grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
-
-          ind_val = '1.1'
-          for col_i in row.index:
-            if 'Indicador' in str(col_i) and pd.notnull(row[col_i]):
-              txt_ind = str(row[col_i])
-              for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
-                if k_ind in txt_ind:
-                  ind_val = k_ind
-                  break
-
-          registros.append({
-              'Fecha': fecha,
-              'Estado': estado,
-              'Municipio': muni,
-              'Sector': sector,
-              'ID_Unico': id_unico,
-              'Sexo': sexo,
-              'Edad': edad,
-              'Grupo_Demografico': grupo_demo,
-              'Indicador': ind_val,
-          })
-
-        df = pd.DataFrame(registros)
-        if not df.empty and 'Fecha' in df.columns:
-          df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
-          df['Mes_Reporte'] = df['Fecha_DT'].apply(
-              lambda x: (
-                  f'{x.year} - {MESES_ES.get(x.month, "")}'
-                  if pd.notnull(x)
-                  else 'Sin Fecha'
-              )
-          )
-        else:
-          df['Mes_Reporte'] = 'Sin Fecha'
-        return df
-    except Exception:
-      pass
-
-  # 2. Si no hay archivo local, conectar a la API de KoboToolbox
-  headers = {'Authorization': f'Token {token}'}
-  url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
-  try:
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-      return pd.DataFrame()
-    data = response.json().get('results', [])
-    if not data:
-      return pd.DataFrame()
-  except Exception:
+  if not os.path.exists(excel_path):
     return pd.DataFrame()
 
-  registros = []
-  for row in data:
-    sector_raw = str(
-        row.get('Sector')
-        or row.get('resultado')
-        or row.get('group_datos_act/Sector')
-        or ''
-    ).lower()
-    if 'wash' in sector_raw or 'agua' in sector_raw or 'r1' in sector_raw:
-      sector = 'WASH'
-    else:
-      sector = 'Protección'
+  try:
+    xls = pd.ExcelFile(excel_path)
+    if len(xls.sheet_names) < 2:
+      return pd.DataFrame()
 
-    estado_code = str(row.get('estado') or row.get('Estado') or '').strip()
-    estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
+    df_main = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+    df_sub = pd.read_excel(xls, sheet_name=xls.sheet_names[1])
 
-    muni_code = str(row.get('municipio') or row.get('Municipio') or '').strip()
-    muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
-
-    fecha = (
-        row.get('Fecha_de_la_Actividad')
-        or row.get('fecha')
-        or row.get('_submission_time')
+    df_main['parent_index'] = df_main['_index']
+    merged_df = pd.merge(
+        df_sub,
+        df_main,
+        left_on='_parent_index',
+        right_on='_index',
+        suffixes=('_sub', '_main'),
     )
 
-    beneficiarios = row.get('group_beneficiario', [])
-    if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
-      for idx, b in enumerate(beneficiarios):
-        cid = str(
-            b.get('CodigoID') or b.get('N_de_Documento_de_Identidad') or ''
-        ).strip()
-        id_unico = (
-            f'ID_{cid}'
-            if cid and cid.lower() not in ['none', '', '0']
-            else f"ROW_{row.get('_id')}_{idx}"
-        )
+    registros = []
+    for _, row in merged_df.iterrows():
+      sector_raw = str(
+          row.get('Resultado:') or row.get('Sector') or ''
+      ).lower()
+      if (
+          'wash' in sector_raw
+          or 'agua' in sector_raw
+          or 'resultado 1' in sector_raw
+      ):
+        sector = 'WASH'
+      else:
+        sector = 'Protección'
 
-        sexo_raw = str(
-            b.get('Sexo') or b.get('Genero') or row.get('Sexo') or ''
-        ).lower()
-        if sexo_raw in ['femenino', 'f', 'mujer']:
-          sexo = 'Mujer'
-        elif sexo_raw in ['masculino', 'm', 'hombre']:
-          sexo = 'Hombre'
-        else:
-          sexo = 'Otro'
+      estado = str(row.get('Estado', 'Distrito Capital')).strip()
+      muni = str(row.get('Municipio', 'Libertador')).strip()
+      fecha = row.get('Fecha de la Actividad:') or row.get(
+          '_submission_time'
+      )
 
-        try:
-          edad = float(b.get('Edad') or b.get('edad_', 0))
-        except Exception:
-          edad = 0
+      cid = str(
+          row.get('CodigoID') or row.get('N.º de Documento de Identidad') or ''
+      ).strip()
+      id_unico = (
+          f'ID_{cid}'
+          if cid and cid.lower() not in ['none', '', '0', 'nan']
+          else f"ROW_{row.get('_id_main')}_{row.get('_index')}"
+      )
 
-        if edad < 18:
-          grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
-        else:
-          grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
+      sexo_raw = str(row.get('Sexo', 'Otro')).lower().strip()
+      if sexo_raw in ['femenino', 'f', 'mujer']:
+        sexo = 'Mujer'
+      elif sexo_raw in ['masculino', 'm', 'hombre']:
+        sexo = 'Hombre'
+      else:
+        sexo = 'Otro'
 
-        ind_val = str(
-            row.get('Indicadores')
-            or row.get('Indicadores_resultados')
-            or row.get('indicador')
-            or '1.1'
-        )
+      try:
+        edad = float(row.get('edad_anos', 0))
+      except Exception:
+        edad = 0
 
-        registros.append({
-            '_id': row.get('_id'),
-            'Fecha': fecha,
-            'Estado': estado,
-            'Municipio': muni,
-            'Sector': sector,
-            'ID_Unico': id_unico,
-            'Sexo': sexo,
-            'Edad': edad,
-            'Grupo_Demografico': grupo_demo,
-            'Indicador': ind_val,
-        })
-    else:
+      if edad < 18:
+        grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
+      else:
+        grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
+
+      ind_val = '1.1'
+      for col_i in row.index:
+        if 'Indicador' in str(col_i) and pd.notnull(row[col_i]):
+          txt_ind = str(row[col_i])
+          for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
+            if k_ind in txt_ind:
+              ind_val = k_ind
+              break
+
       registros.append({
-          '_id': row.get('_id'),
           'Fecha': fecha,
           'Estado': estado,
           'Municipio': muni,
           'Sector': sector,
-          'ID_Unico': f"ROW_{row.get('_id')}_0",
-          'Sexo': 'Otro',
-          'Edad': 0,
-          'Grupo_Demografico': 'Hombre',
-          'Indicador': '1.1',
+          'ID_Unico': id_unico,
+          'Sexo': sexo,
+          'Edad': edad,
+          'Grupo_Demografico': grupo_demo,
+          'Indicador': ind_val,
       })
 
-  df = pd.DataFrame(registros)
-  if not df.empty and 'Fecha' in df.columns:
-    df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
-    df['Mes_Reporte'] = df['Fecha_DT'].apply(
-        lambda x: (
-            f'{x.year} - {MESES_ES.get(x.month, "")}'
-            if pd.notnull(x)
-            else 'Sin Fecha'
-        )
-    )
-  else:
-    df['Mes_Reporte'] = 'Sin Fecha'
-  return df
+    df = pd.DataFrame(registros)
+    if not df.empty and 'Fecha' in df.columns:
+      df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
+      df['Mes_Reporte'] = df['Fecha_DT'].apply(
+          lambda x: (
+              f'{x.year} - {MESES_ES.get(x.month, "")}'
+              if pd.notnull(x)
+              else 'Sin Fecha'
+          )
+      )
+    else:
+      df['Mes_Reporte'] = 'Sin Fecha'
+    return df
+  except Exception:
+    return pd.DataFrame()
 
 
-# Credenciales Kobo del proyecto AICS
-ASSET_ID_AICS = 'aBiwjqr5xDBwCMy9uTHDac'
-TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
-df_raw = cargar_datos_completos(ASSET_ID_AICS, TOKEN_AICS)
+df_raw = cargar_datos_excel_kobo()
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -425,8 +304,8 @@ st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
   st.warning(
-      'No se pudieron cargar datos desde la API de KoboToolbox ni del Excel'
-      ' local.'
+      '⚠️ No se encontró el archivo Excel de Kobo en el repositorio. Por favor'
+      ' asegúrate de subirlo a GitHub junto con app.py.'
   )
   st.stop()
 
