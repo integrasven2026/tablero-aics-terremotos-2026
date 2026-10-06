@@ -1,0 +1,488 @@
+import io
+import os
+import re
+import folium
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import requests
+import streamlit as st
+from streamlit_folium import st_folium
+
+# -----------------------------------------------------------------------------
+# PALETA DE COLORES OFICIAL CONSORCIO INTEGRAS / AICS
+# -----------------------------------------------------------------------------
+COLOR_AGUAMARINA = '#17C3B2'
+COLOR_ROSADO_AAP = '#D89FE3'
+COLOR_VERDE_ABIERTO = '#28A745'
+COLOR_AMARILLO_MOSTAZA = '#E5B130'
+
+PALETA_INTEGRAS = [
+    COLOR_AGUAMARINA,
+    COLOR_ROSADO_AAP,
+    COLOR_AMARILLO_MOSTAZA,
+    '#08327D',
+    '#0072CE',
+]
+
+# -----------------------------------------------------------------------------
+# 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS
+# -----------------------------------------------------------------------------
+st.set_page_config(
+    page_title='Tablero AICS | Emergencia Terremotos Venezuela',
+    layout='wide',
+    initial_sidebar_state='expanded',
+)
+
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Quicksand:wght@600;700&display=swap');
+
+    html, body, [class*="css"], .stMarkdown, p, div, span, label, input, button {
+        font-family: 'Quicksand', sans-serif !important;
+        font-weight: 700 !important;
+    }
+
+    h1, h2, h3, h4, h5, h6, .stSubheader {
+        font-family: 'Montserrat', sans-serif !important;
+        font-weight: 700 !important;
+    }
+
+    .titulo-principal {
+        font-family: 'Montserrat', sans-serif !important;
+        color: #17C3B2 !important;
+        margin-bottom: 5px !important;
+        font-weight: 800 !important;
+        font-size: 1.8rem !important;
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
+
+# -----------------------------------------------------------------------------
+# ENCABEZADO
+st.markdown(
+    "<h1 class='titulo-principal'>Tablero de Monitoreo Proyecto Intervención"
+    ' de emergencia en respuesta a la crisis en Venezuela tras los terremotos'
+    ' del 24 de junio de 2026 en Caracas, Miranda y La Guaira - Venezuela'
+    ' Proyecto AICS</h1>',
+    unsafe_allow_html=True,
+)
+st.markdown(
+    '**Financiador:** AICS (Agencia Italiana de Cooperación para el'
+    ' Desarrollo) | **Socio Ejecutor:** COOPI'
+)
+st.markdown('---')
+
+# METAS DEL PROYECTO
+META_PARTICIPANTES_UNICOS = 4200
+
+MESES_ES = {
+    1: 'Enero',
+    2: 'Febrero',
+    3: 'Marzo',
+    4: 'Abril',
+    5: 'Mayo',
+    6: 'Junio',
+    7: 'Julio',
+    8: 'Agosto',
+    9: 'Septiembre',
+    10: 'Octubre',
+    11: 'Noviembre',
+    12: 'Diciembre',
+}
+
+MAPA_ESTADOS = {
+    'VE01': 'Distrito Capital',
+    'VE15': 'Miranda',
+    'VE24': 'La Guaira',
+}
+
+MAPA_MUNICIPIOS = {
+    'VE0101': 'Libertador',
+    'VE1515': 'Paz Castillo',
+    'VE1519': 'Sucre (Miranda)',
+    'VE1520': 'Urdaneta',
+    'VE2401': 'Vargas',
+}
+
+COORDENADAS_MUNICIPIOS = {
+    'Libertador': [10.5000, -66.9167],
+    'Paz Castillo': [10.2167, -66.6667],
+    'Sucre (Miranda)': [10.4833, -66.8167],
+    'Urdaneta': [10.1500, -66.8833],
+    'Vargas': [10.6000, -66.9333],
+}
+
+MAPA_INDICADORES_AICS = {
+    '1.1': (
+        '1.1 N.º de personas con acceso a la cantidad mínima de artículos'
+        ' esenciales de higiene'
+    ),
+    '1.2': '1.2 N.º de personas con acceso a al menos 15 litros de agua potable',
+    '1.3': (
+        '1.3 % de personas con discapacidad y movilidad reducida con acceso a'
+        ' WASH adaptadas'
+    ),
+    '2.1': (
+        '2.1 N.º de niños y niñas que reciben apoyo psicosocial / Child'
+        ' Friendly Spaces'
+    ),
+    '2.2': (
+        '2.2 % población con conocimiento de servicios para prevención y'
+        ' respuesta a VBG'
+    ),
+    '2.3': (
+        '2.3 N.º de personas beneficiadas con medidas específicas de protección'
+        ' y prevención'
+    ),
+}
+
+METAS_INDICADORES_AICS = {
+    '1.1': {'meta': 4800, 'tipo': 'numero'},
+    '1.2': {'meta': 2200, 'tipo': 'numero'},
+    '1.3': {'meta': 100, 'tipo': 'porcentaje'},
+    '2.1': {'meta': 1580, 'tipo': 'numero'},
+    '2.2': {'meta': 80, 'tipo': 'porcentaje'},
+    '2.3': {'meta': 90, 'tipo': 'numero'},
+}
+
+font_layout = dict(family='Quicksand', size=13)
+
+
+# -----------------------------------------------------------------------------
+# CARGA DE DATOS DESDE KOBOTOOLBOX
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600)
+def cargar_datos_kobo_aics(
+    asset_id, token, kobo_url='https://eu.kobotoolbox.org'
+):
+  headers = {'Authorization': f'Token {token}'}
+  url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
+  try:
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+      return pd.DataFrame()
+    data = response.json().get('results', [])
+    if not data:
+      return pd.DataFrame()
+  except Exception:
+    return pd.DataFrame()
+
+  registros = []
+  for row in data:
+    sector_raw = str(
+        row.get('Sector')
+        or row.get('resultado')
+        or row.get('group_datos_act/Sector')
+        or ''
+    ).lower()
+    if 'wash' in sector_raw or 'agua' in sector_raw or 'r1' in sector_raw:
+      sector = 'WASH'
+    else:
+      sector = 'Protección'
+
+    estado_code = str(row.get('estado') or row.get('Estado') or '').strip()
+    estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
+
+    muni_code = str(row.get('municipio') or row.get('Municipio') or '').strip()
+    muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
+
+    fecha = (
+        row.get('Fecha_de_la_Actividad')
+        or row.get('fecha')
+        or row.get('_submission_time')
+    )
+
+    beneficiarios = row.get('group_beneficiario', [])
+    if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
+      for idx, b in enumerate(beneficiarios):
+        b_info = base_registro(row, b, idx, sector, estado, muni, fecha)
+        registros.append(b_info)
+    else:
+      b_info = base_registro(row, {}, 0, sector, estado, muni, fecha)
+      registros.append(b_info)
+
+  df = pd.DataFrame(registros)
+  if not df.empty and 'Fecha' in df.columns:
+    df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
+    df['Mes_Reporte'] = df['Fecha_DT'].apply(
+        lambda x: (
+            f'{x.year} - {MESES_ES.get(x.month, "")}'
+            if pd.notnull(x)
+            else 'Sin Fecha'
+        )
+    )
+  else:
+    df['Mes_Reporte'] = 'Sin Fecha'
+  return df
+
+
+def base_registro(row, b, idx, sector, estado, muni, fecha):
+  cid = str(
+      b.get('CodigoID') or b.get('N_de_Documento_de_Identidad') or ''
+  ).strip()
+  id_unico = (
+      f'ID_{cid}'
+      if cid and cid.lower() not in ['none', '', '0']
+      else f"ROW_{row.get('_id')}_{idx}"
+  )
+
+  sexo_raw = str(
+      b.get('Sexo') or b.get('Genero') or row.get('Sexo') or ''
+  ).lower()
+  if sexo_raw in ['femenino', 'f', 'mujer']:
+    sexo = 'Mujer'
+  elif sexo_raw in ['masculino', 'm', 'hombre']:
+    sexo = 'Hombre'
+  else:
+    sexo = 'Otro'
+
+  try:
+    edad = float(b.get('Edad') or b.get('edad_', 0))
+  except Exception:
+    edad = 0
+
+  if edad < 18:
+    grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
+  else:
+    grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
+
+  ind_val = str(
+      row.get('Indicadores')
+      or row.get('Indicadores_resultados')
+      or row.get('indicador')
+      or '1.1'
+  )
+
+  return {
+      '_id': row.get('_id'),
+      'Fecha': fecha,
+      'Estado': estado,
+      'Municipio': muni,
+      'Sector': sector,
+      'ID_Unico': id_unico,
+      'Sexo': sexo,
+      'Edad': edad,
+      'Grupo_Demografico': grupo_demo,
+      'Indicador': ind_val,
+  }
+
+
+# Credenciales Kobo del nuevo proyecto AICS
+ASSET_ID_AICS = 'aBiwjqr5xDBwCMy9uTHDac'
+TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
+df_raw = cargar_datos_kobo_aics(ASSET_ID_AICS, TOKEN_AICS)
+
+# -----------------------------------------------------------------------------
+# FILTROS LATERALES
+# -----------------------------------------------------------------------------
+st.sidebar.header('Sincronización y Filtros')
+
+if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
+  st.cache_data.clear()
+  st.rerun()
+
+st.sidebar.markdown('---')
+
+meses_disp = ['Todos'] + sorted(
+    [m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha']
+)
+mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp)
+
+sectores_disp = ['Todos', 'WASH', 'Protección']
+sector_sel = st.sidebar.selectbox('Sector:', sectores_disp)
+
+sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
+sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp)
+
+grupo_demo_disp = ['Todos', 'Mujer', 'Hombre', 'Niña', 'Niño']
+grupo_demo_sel = st.sidebar.selectbox('Grupo Demográfico:', grupo_demo_disp)
+
+# Aplicar filtros
+df_filtered = df_raw.copy()
+if mes_sel != 'Todos':
+  df_filtered = df_filtered[df_filtered['Mes_Reporte'] == mes_sel]
+if sector_sel != 'Todos':
+  df_filtered = df_filtered[df_filtered['Sector'] == sector_sel]
+if sexo_sel != 'Todos':
+  df_filtered = df_filtered[df_filtered['Sexo'] == sexo_sel]
+if grupo_demo_sel != 'Todos':
+  df_filtered = df_filtered[df_filtered['Grupo_Demografico'] == grupo_demo_sel]
+
+# -----------------------------------------------------------------------------
+# MÉTRICAS CLAVE
+# -----------------------------------------------------------------------------
+total_servicios = len(df_filtered)
+df_unicos = df_filtered.drop_duplicates(subset=['ID_Unico'])
+total_unicos = len(df_unicos)
+pct_meta = (
+    (total_unicos / META_PARTICIPANTES_UNICOS) * 100
+    if META_PARTICIPANTES_UNICOS > 0
+    else 0
+)
+
+col1, col2, col3 = st.columns(3)
+col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
+col2.metric('Participantes Únicos', f'{total_unicos:,}')
+col3.metric(
+    '% Alcance de la Meta (4.200 pers.)',
+    f'{pct_meta:.2f}%',
+    delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
+)
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# GRÁFICOS: GRUPO ETARIO / SEXO Y MUNICIPIOS
+# -----------------------------------------------------------------------------
+g1, g2 = st.columns(2)
+
+with g1:
+  st.subheader('Participantes Únicos por Grupo Etario y Sexo')
+  if total_unicos > 0 and 'Grupo_Demografico' in df_unicos.columns:
+    df_demo = (
+        df_unicos.groupby('Grupo_Demografico')
+        .size()
+        .reset_index(name='Cantidad')
+    )
+    fig_demo = px.bar(
+        df_demo,
+        x='Grupo_Demografico',
+        y='Cantidad',
+        color='Grupo_Demografico',
+        text='Cantidad',
+        color_discrete_sequence=PALETA_INTEGRAS,
+    )
+    fig_demo.update_traces(textposition='outside')
+    fig_demo.update_layout(
+        showlegend=False, font=font_layout, xaxis_title='Grupo Etario y Sexo'
+    )
+    st.plotly_chart(fig_demo, width='stretch')
+  else:
+    st.info('No hay datos disponibles para los filtros seleccionados.')
+
+with g2:
+  st.subheader('Participantes Únicos por Municipio')
+  if total_unicos > 0 and 'Municipio' in df_unicos.columns:
+    df_muni = (
+        df_unicos.groupby(['Estado', 'Municipio'])
+        .size()
+        .reset_index(name='Cantidad')
+    )
+    df_muni = df_muni.sort_values(by='Cantidad', ascending=True)
+    fig_muni = px.bar(
+        df_muni,
+        y='Municipio',
+        x='Cantidad',
+        color='Estado',
+        orientation='h',
+        text='Cantidad',
+        color_discrete_sequence=PALETA_INTEGRAS,
+    )
+    fig_muni.update_traces(textposition='outside')
+    fig_muni.update_layout(
+        showlegend=True, font=font_layout, yaxis_title='Municipio'
+    )
+    st.plotly_chart(fig_muni, width='stretch')
+  else:
+    st.info('No hay datos disponibles.')
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# MAPA INTERACTIVO
+# -----------------------------------------------------------------------------
+st.subheader('Mapa de Cobertura por Municipios Atendidos')
+
+mapa = folium.Map(
+    location=[10.35, -66.85], zoom_start=9, tiles='CartoDB positron'
+)
+
+if total_unicos > 0:
+  muni_totales = (
+      df_unicos.groupby(['Estado', 'Municipio'])
+      .size()
+      .reset_index(name='Total_Unicos')
+  )
+  for _, m_row in muni_totales.iterrows():
+    est = m_row['Estado']
+    mun = m_row['Municipio']
+    tot = m_row['Total_Unicos']
+    coords = COORDENADAS_MUNICIPIOS.get(mun, [10.5, -66.9])
+
+    popup_html = f"""
+        <div style='font-family: Quicksand; font-size: 12px; width: 160px;'>
+            <h4 style='color: {COLOR_AGUAMARINA}; margin-bottom: 5px;'>{mun}</h4>
+            <b>Estado:</b> {est}<br>
+            <b>Participantes Únicos:</b> {tot}
+        </div>
+        """
+    folium.CircleMarker(
+        location=coords,
+        radius=min(tot * 2, 22) + 6,
+        popup=folium.Popup(popup_html, max_width=200),
+        color=COLOR_AGUAMARINA,
+        fill=True,
+        fill_color=COLOR_AGUAMARINA,
+        fill_opacity=0.75,
+    ).add_to(mapa)
+
+st_folium(mapa, width='stretch', height=400)
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# ALCANCE DE LOS INDICADORES
+# -----------------------------------------------------------------------------
+st.subheader('Alcance de los Indicadores del Proyecto AICS')
+
+if total_servicios > 0:
+  records_ind = []
+  for _, row in df_filtered.iterrows():
+    cod = str(row.get('Indicador', '1.1')).strip()
+    records_ind.append({
+        'Codigo': cod,
+        'Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador {cod}'),
+        'ID_Unico': row.get('ID_Unico'),
+    })
+
+  df_ind = pd.DataFrame(records_ind)
+  summary_ind = (
+      df_ind.groupby(['Codigo', 'Indicador'])
+      .agg(Alcanzados=('ID_Unico', 'nunique'))
+      .reset_index()
+  )
+
+  metas_vals, porcentajes_avance = [], []
+  for _, r in summary_ind.iterrows():
+    c = r['Codigo']
+    meta_info = METAS_INDICADORES_AICS.get(c, {'meta': 100, 'tipo': 'numero'})
+    meta_val = meta_info['meta']
+    metas_vals.append(meta_val)
+    alc = (r['Alcanzados'] / meta_val) * 100 if meta_val > 0 else 0
+    porcentajes_avance.append(f'{alc:.1f}%')
+
+  summary_ind['Meta'] = metas_vals
+  summary_ind['% Avance'] = porcentajes_avance
+
+  fig_ind = px.bar(
+      summary_ind,
+      x='Indicador',
+      y='Alcanzados',
+      text='Alcanzados',
+      title='Avance por Indicador de Producto / Resultado',
+      color_discrete_sequence=['#08327D'],
+  )
+  fig_ind.update_traces(textposition='outside')
+  fig_ind.update_layout(font=font_layout, xaxis_title='Indicador')
+  st.plotly_chart(fig_ind, width='stretch')
+
+  st.dataframe(summary_ind, width='stretch', hide_index=True)
+else:
+  st.info(
+      'No hay registros suficientes para calcular los indicadores con los'
+      ' filtros actuales.'
+  )
