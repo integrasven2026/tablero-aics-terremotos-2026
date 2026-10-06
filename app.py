@@ -202,7 +202,7 @@ def normalizar_sexo(valor):
 
 def normalizar_discapacidad(valor):
     s = str(valor).lower().strip()
-    if any(x in s for x in ['sí', 'si', 'yes', '1', 'true', 'discapacidad']):
+    if any(x in s for x in ['sí', 'si', 'yes', 'true', '1']) and 'count_' not in s:
         return 'Sí'
     return 'No'
 
@@ -292,7 +292,7 @@ def cargar_datos_kobo_api(
                         sexo_val = str(v).strip()
                     elif k_lower == 'rango_etario' or k_lower.endswith('/rango_etario') or 'resul_edad' in k_lower:
                         rango_val = str(v).strip()
-                    elif 'discapacidad' in k_lower:
+                    elif ('discapacidad' in k_lower or k_lower.endswith('persona_con_discapacidad')) and 'count_' not in k_lower:
                         disc_val = str(v).strip()
 
                 if not sexo_val:
