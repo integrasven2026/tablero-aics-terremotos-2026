@@ -142,11 +142,11 @@ MAPA_MUNICIPIOS = {
 
 COORDENADAS_MUNICIPIOS = {
     'Libertador': [10.5000, -66.9167],
+    'Cristobal Rojas': [10.2333, -66.6833],
     'Paz Castillo': [10.2167, -66.6667],
     'Sucre (Miranda)': [10.4833, -66.8167],
     'Urdaneta': [10.1500, -66.8833],
     'Vargas': [10.6000, -66.9333],
-    'Cristobal Rojas': [10.2333, -66.6833],
 }
 
 MAPA_INDICADORES_AICS = {
@@ -456,7 +456,6 @@ with g1:
             .reset_index(name='Cantidad')
         )
         
-        # Mapeo de orden para los rangos etarios
         orden_etario = {
             '0 A 4 Años': 1,
             '5 A 17 Años': 2,
@@ -516,12 +515,12 @@ with g2:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# MAPA INTERACTIVO
+# MAPA INTERACTIVO (CORREGIDO CON OPENSTREETMAP LIBRE)
 # -----------------------------------------------------------------------------
 st.subheader('Mapa de Cobertura por Municipios Atendidos')
 
 mapa = folium.Map(
-    location=[10.35, -66.85], zoom_start=9, tiles='CartoDB positron'
+    location=[10.40, -66.90], zoom_start=10, tiles='OpenStreetMap'
 )
 
 if total_unicos > 0:
@@ -537,23 +536,23 @@ if total_unicos > 0:
         coords = COORDENADAS_MUNICIPIOS.get(mun, [10.5, -66.9])
 
         popup_html = f"""
-        <div style='font-family: Quicksand; font-size: 12px; width: 160px;'>
+        <div style='font-family: Quicksand; font-size: 13px; width: 180px;'>
             <h4 style='color: {COLOR_AZUL_COOPI}; margin-bottom: 5px;'>{mun}</h4>
             <b>Estado:</b> {est}<br>
-            <b>Participantes Únicos:</b> {tot}
+            <b>Participantes Únicos:</b> <b>{tot}</b>
         </div>
         """
         folium.CircleMarker(
             location=coords,
-            radius=min(tot * 2, 22) + 6,
+            radius=min(tot * 1.5, 25) + 8,
             popup=folium.Popup(popup_html, max_width=200),
             color=COLOR_AZUL_COOPI,
             fill=True,
             fill_color=COLOR_AZUL_COOPI,
-            fill_opacity=0.75,
+            fill_opacity=0.8,
         ).add_to(mapa)
 
-st_folium(mapa, width='stretch', height=400)
+st_folium(mapa, width='stretch', height=450)
 
 st.markdown('---')
 
