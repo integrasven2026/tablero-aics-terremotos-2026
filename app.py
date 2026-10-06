@@ -5,22 +5,25 @@ import folium
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import requests
 import streamlit as st
 from streamlit_folium import st_folium
 
 # -----------------------------------------------------------------------------
-# PALETA DE COLORES OFICIAL COOPI
+# PALETA DE COLORES OFICIAL COOPI / AICS
 # -----------------------------------------------------------------------------
 COLOR_AZUL_COOPI = '#0072CE'
 COLOR_VERDE_COOPI = '#28A745'
 COLOR_AGUAMARINA = '#17C3B2'
+COLOR_ROSADO_AAP = '#D89FE3'
 COLOR_AMARILLO_MOSTAZA = '#E5B130'
 
 PALETA_COOPI = [
     COLOR_AZUL_COOPI,
     COLOR_VERDE_COOPI,
     COLOR_AGUAMARINA,
+    COLOR_ROSADO_AAP,
     COLOR_AMARILLO_MOSTAZA,
     '#08327D',
 ]
@@ -62,7 +65,7 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# ENCABEZADO CON TÍTULO CORTO Y LOGO COOPI
+# ENCABEZADO CON TÍTULO Y LOGO
 # -----------------------------------------------------------------------------
 col_header_title, col_header_logo = st.columns([3, 1])
 
@@ -98,7 +101,7 @@ with col_header_logo:
 
 st.markdown('---')
 
-# META OFICIAL DEL PROYECTO (4.906 participantes únicos)[cite: 38]
+# META OFICIAL DEL PROYECTO
 META_PARTICIPANTES_UNICOS = 4906
 
 MESES_ES = {
@@ -197,7 +200,7 @@ def normalizar_sexo(valor):
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CON PARSER DE COMAS BLINDADO)
+# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (PROCESAMIENTO DE COMAS)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -271,7 +274,7 @@ def cargar_datos_kobo_api(
           elif 'rango_etario' in k_lower or 'resul_edad' in k_lower:
             rango_val = str(v).strip()
 
-        # Separar por comas por si Kobo entrega cadenas concatenadas en el JSON
+        # Desglose estricto por comas tal como se muestra en la base de datos de Kobo
         lista_sexos = [s.strip() for s in sexo_val.split(',') if s.strip()]
         lista_rangos = [r.strip() for r in rango_val.split(',') if r.strip()]
 
@@ -364,7 +367,7 @@ st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
   st.warning(
-      '⚠️️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
+      '⚠️ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
       ' token y conexión.'
   )
   st.stop()
