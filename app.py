@@ -182,14 +182,13 @@ font_layout = dict(family='Quicksand', size=13)
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CON SOPORTE DE ETIQUETAS)
+# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (USANDO RANGO_ETARIO Y SEXO)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
     asset_id, token, kobo_url='https://eu.kobotoolbox.org'
 ):
   headers = {'Authorization': f'Token {token}'}
-  # Solicitamos con format=json para asegurar la lectura correcta de etiquetas y valores
   url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
   try:
     response = requests.get(url, headers=headers, timeout=15)
@@ -233,7 +232,7 @@ def cargar_datos_kobo_api(
         or row.get('_submission_time')
     )
 
-    # Procesar la segunda hoja / grupo repetido de beneficiarios en Kobo (group_beneficiario)
+    # Procesar la segunda hoja / grupo repetido (group_beneficiario)
     beneficiarios = row.get('group_beneficiario', [])
     if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
       for idx, b in enumerate(beneficiarios):
@@ -249,31 +248,21 @@ def cargar_datos_kobo_api(
             else f"ROW_{row.get('_id')}_{idx}"
         )
 
-        # Capturar sexo manejando tanto etiquetas de texto como códigos XML de Kobo
-        sexo_raw = str(
-            b.get('Sexo') or b.get('Genero') or row.get('Sexo') or ''
-        ).lower().strip()
-        if sexo_raw in ['femenino', 'f', 'mujer', '2']:
+        # Capturar Sexo
+        sexo_raw = str(b.get('Sexo') or '').lower().strip()
+        if 'muj' in sexo_raw or 'fem' in sexo_raw or sexo_raw == '2':
           sexo = 'Mujer'
-        elif sexo_raw in ['masculino', 'm', 'hombre', '1']:
+        elif 'hom' in sexo_raw or 'masc' in sexo_raw or sexo_raw == '1':
           sexo = 'Hombre'
         else:
-          sexo = 'Mujer' if 'muj' in sexo_raw or 'fem' in sexo_raw else 'Hombre'
+          sexo = 'Mujer' if 'mujer' in sexo_raw else 'Hombre'
 
-        try:
-          edad = float(
-              b.get('edad_anos')
-              or b.get('Edad')
-              or b.get('edad_', 0)
-              or 0
-          )
-        except Exception:
-          edad = 0
-
-        if edad < 18:
-          grupo_demo = 'Niña' if sexo == 'Mujer' else 'Niño'
-        else:
-          grupo_demo = 'Mujer' if sexo == 'Mujer' else 'Hombre'
+        # Capturar Rango Etario directamente del formulario Kobo
+        rango_etario = str(
+            b.get('rango_etario') or b.get('resul_edad') or 'No especificado'
+        ).strip()
+        if not rango_etario or rango_etario.lower() == 'nan':
+          rango_etario = 'No especificado'
 
         ind_val = '1.1'
         for col_i, val_i in row.items():
@@ -292,8 +281,7 @@ def cargar_datos_kobo_api(
             'Sector': sector,
             'ID_Unico': id_unico,
             'Sexo': sexo,
-            'Edad': edad,
-            'Grupo_Demografico': grupo_demo,
+            'Rango_Etario': rango_etario,
             'Indicador': ind_val,
         })
     else:
@@ -305,8 +293,7 @@ def cargar_datos_kobo_api(
           'Sector': sector,
           'ID_Unico': f"ROW_{row.get('_id')}_0",
           'Sexo': 'Hombre',
-          'Edad': 25,
-          'Grupo_Demografico': 'Hombre',
+          'Rango_Etario': '18 a 49 años',
           'Indicador': '1.1',
       })
 
@@ -359,8 +346,8 @@ sector_sel = st.sidebar.selectbox('Sector:', sectores_disp)
 sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
 sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp)
 
-grupo_demo_disp = ['Todos', 'Mujer', 'Hombre', 'Niña', 'Niño']
-grupo_demo_sel = st.sidebar.selectbox('Grupo Demográfico:', grupo_demo_disp)
+rango_disp = ['Todos'] + sorted(df_raw['Rango_Etario'].unique().tolist())
+rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp)
 
 # Aplicar filtros
 df_filtered = df_raw.copy()
@@ -370,8 +357,8 @@ if sector_sel != 'Todos':
   df_filtered = df_filtered[df_filtered['Sector'] == sector_sel]
 if sexo_sel != 'Todos':
   df_filtered = df_filtered[df_filtered['Sexo'] == sexo_sel]
-if grupo_demo_sel != 'Todos':
-  df_filtered = df_filtered[df_filtered['Grupo_Demografico'] == grupo_demo_sel]
+if rango_sel != 'Todos':
+  df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
 # MÉTRICAS CLAVE
@@ -397,29 +384,33 @@ col3.metric(
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# GRÁFICOS: GRUPO ETARIO / SEXO Y MUNICIPIOS
+# GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS
 # -----------------------------------------------------------------------------
 g1, g2 = st.columns(2)
 
 with g1:
-  st.subheader('Participantes Únicos por Grupo Etario y Sexo')
-  if total_unicos > 0 and 'Grupo_Demografico' in df_unicos.columns:
+  st.subheader('Participantes Únicos por Rango Etario y Sexo')
+  if total_unicos > 0 and 'Rango_Etario' in df_unicos.columns:
     df_demo = (
-        df_unicos.groupby('Grupo_Demografico')
+        df_unicos.groupby(['Rango_Etario', 'Sexo'])
         .size()
         .reset_index(name='Cantidad')
     )
     fig_demo = px.bar(
         df_demo,
-        x='Grupo_Demografico',
+        x='Rango_Etario',
         y='Cantidad',
-        color='Grupo_Demografico',
+        color='Sexo',
+        barmode='group',
         text='Cantidad',
         color_discrete_sequence=PALETA_COOPI,
     )
     fig_demo.update_traces(textposition='outside')
     fig_demo.update_layout(
-        showlegend=False, font=font_layout, xaxis_title='Grupo Etario y Sexo'
+        showlegend=True,
+        font=font_layout,
+        xaxis_title='Rango Etario',
+        yaxis_title='Cantidad',
     )
     st.plotly_chart(fig_demo, width='stretch')
   else:
@@ -500,7 +491,7 @@ st.markdown('---')
 # -----------------------------------------------------------------------------
 st.subheader('Alcance de los Indicadores del Proyecto AICS')
 
-if total_services := len(df_filtered) > 0:
+if total_servicios := len(df_filtered) > 0:
   records_ind = []
   for _, row in df_filtered.iterrows():
     cod = str(row.get('Indicador', '1.1')).strip()
@@ -545,5 +536,5 @@ if total_services := len(df_filtered) > 0:
 else:
   st.info(
       'No hay registros suficientes para calcular los indicadores con los'
-      ' filtros actuales.'
+      ' filtros条件的 filtros actuales.'
   )
