@@ -188,7 +188,7 @@ def limpiar_texto(texto):
 
 
 # -----------------------------------------------------------------------------
-# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CORRECCIÓN CRÍTICA DE SEXO)
+# CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (PROCESAMIENTO DE CADENAS SEPARADAS POR COMAS)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -246,7 +246,6 @@ def cargar_datos_kobo_api(
         or row.get('_submission_time')
     )
 
-    # Procesar grupo repetido de beneficiarios (group_beneficiario)
     beneficiarios = row.get('group_beneficiario', [])
     if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
       for idx, b in enumerate(beneficiarios):
@@ -254,7 +253,6 @@ def cargar_datos_kobo_api(
         sexo_val = ''
         rango_val = ''
 
-        # Barrido flexible de llaves anidadas en Kobo (capturando cualquier ruta con 'sexo' o 'genero')
         for k, v in b.items():
           k_lower = str(k).lower()
           if 'codigoid' in k_lower or 'documento' in k_lower:
@@ -264,52 +262,63 @@ def cargar_datos_kobo_api(
           elif 'rango_etario' in k_lower or 'resul_edad' in k_lower:
             rango_val = str(v).strip()
 
-        id_unico = (
-            f'ID_{cid}'
-            if cid and cid.lower() not in ['none', '', '0', 'nan']
-            else f"ROW_{row.get('_id')}_{idx}"
-        )
+        # Si vienen separados por comas en una sola cadena, los separamos en lista
+        lista_sexos = [s.strip() for s in sexo_val.split(',') if s.strip()]
+        lista_rangos = [r.strip() for r in rango_val.split(',') if r.strip()]
 
-        # Normalización robusta y directa de Sexo
-        sexo_lower = sexo_val.lower()
-        if any(
-            x in sexo_lower for x in ['muj', 'fem', 'mujer', 'femenino', '2']
-        ):
-          sexo = 'Mujer'
-        elif any(
-            x in sexo_lower for x in ['hom', 'masc', 'hombre', 'masculino', '1']
-        ):
-          sexo = 'Hombre'
-        else:
-          sexo = (
-              'Mujer'
-              if ('muj' in sexo_lower or 'fem' in sexo_lower)
-              else 'Hombre'
+        max_len = max(len(lista_sexos), len(lista_rangos), 1)
+
+        for sub_i in range(max_len):
+          s_item = (
+              lista_sexos[sub_i]
+              if sub_i < len(lista_sexos)
+              else (lista_sexos[0] if lista_sexos else 'Mujer')
+          )
+          r_item = (
+              lista_rangos[sub_i]
+              if sub_i < len(lista_rangos)
+              else (lista_rangos[0] if lista_rangos else '18 A 49 Años')
           )
 
-        # Normalizar Rango Etario
-        rango_etario = limpiar_texto(rango_val)
+          id_unico = (
+              f'ID_{cid}_{sub_i}'
+              if cid and cid.lower() not in ['none', '', '0', 'nan']
+              else f"ROW_{row.get('_id')}_{idx}_{sub_i}"
+          )
 
-        ind_val = '1.1'
-        for col_i, val_i in row.items():
-          if 'Indicador' in str(col_i) and pd.notnull(val_i):
-            txt_ind = str(val_i)
-            for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
-              if k_ind in txt_ind:
-                ind_val = k_ind
-                break
+          # Normalización de Sexo
+          s_lower = s_item.lower()
+          if any(x in s_lower for x in ['muj', 'fem', 'mujer', 'femenino', '2']):
+            sexo = 'Mujer'
+          elif any(
+              x in s_lower for x in ['hom', 'masc', 'hombre', 'masculino', '1']
+          ):
+            sexo = 'Hombre'
+          else:
+            sexo = 'Mujer' if 'muj' in s_lower else 'Hombre'
 
-        registros.append({
-            '_id': row.get('_id'),
-            'Fecha': fecha,
-            'Estado': estado,
-            'Municipio': muni,
-            'Sector': sector,
-            'ID_Unico': id_unico,
-            'Sexo': sexo,
-            'Rango_Etario': rango_etario,
-            'Indicador': ind_val,
-        })
+          rango_etario = limpiar_texto(r_item)
+
+          ind_val = '1.1'
+          for col_i, val_i in row.items():
+            if 'Indicador' in str(col_i) and pd.notnull(val_i):
+              txt_ind = str(val_i)
+              for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
+                if k_ind in txt_ind:
+                  ind_val = k_ind
+                  break
+
+          registros.append({
+              '_id': row.get('_id'),
+              'Fecha': fecha,
+              'Estado': estado,
+              'Municipio': muni,
+              'Sector': sector,
+              'ID_Unico': id_unico,
+              'Sexo': sexo,
+              'Rango_Etario': rango_etario,
+              'Indicador': ind_val,
+          })
     else:
       registros.append({
           '_id': row.get('_id'),
