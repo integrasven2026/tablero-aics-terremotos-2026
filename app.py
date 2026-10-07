@@ -205,7 +205,7 @@ def normalizar_discapacidad(valor):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX
+# 2. CARGA DE DATOS DESDE LAS DOS APIS DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -225,7 +225,6 @@ def cargar_datos_kobo_api(
 
     registros = []
     for row in data:
-        # Extracción segura de case_id dentro de group_metadatos_alfa
         meta_alfa = row.get('group_metadatos_alfa', {})
         case_id_alfa = ''
         if isinstance(meta_alfa, dict):
@@ -233,16 +232,16 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Categorización precisa basada en la nomenclatura del case_id (ej: 2026-VEN-PS07-013-AICS)
-        tipo_servicio_proteccion = 'No especificado'
+        # Clasificación exacta basada en el case_id del formulario de protección
         case_upper = case_id_alfa.upper()
         row_str = str(row).lower()
 
+        tipo_servicio_proteccion = 'No especificado'
         if '-PS' in case_upper or 'PS' in case_upper or 'psicolog' in row_str:
             tipo_servicio_proteccion = '3. APS Psicosocial'
         elif '-OL' in case_upper or 'OL' in case_upper or 'orientacion_legal' in row_str or 'abogado' in row_str:
             tipo_servicio_proteccion = '2. Orientación Legal'
-        elif '-G' in case_upper or 'G' in case_upper or 'gestor' in row_str or case_id_alfa != '':
+        elif asset_id == 'aD96E3u2eqQUSUTW2EBHjx' or '-G' in case_upper or 'G' in case_upper or 'gestor' in row_str:
             tipo_servicio_proteccion = '1. Protección General'
 
         sector_raw = str(
@@ -306,7 +305,7 @@ def cargar_datos_kobo_api(
                 except Exception:
                     pass
 
-        ind_val = '1.1'
+        ind_val = '2.3' if asset_id == 'aD96E3u2eqQUSUTW2EBHjx' else '1.1'
         encontrado = False
         for col_i, val_i in row.items():
             if not isinstance(val_i, (str, int, float, bool)) or val_i is None:
@@ -322,7 +321,7 @@ def cargar_datos_kobo_api(
                 if encontrado:
                     break
 
-        if not encontrado:
+        if not encontrado and asset_id != 'aD96E3u2eqQUSUTW2EBHjx':
             for k, v in row.items():
                 if isinstance(v, (str, int, float, bool)) and v is not None:
                     val_str = str(v).lower()
@@ -496,10 +495,17 @@ def cargar_datos_kobo_api(
     return df
 
 
-# Credenciales Kobo del proyecto AICS
-ASSET_ID_AICS = 'aBiwjqr5xDBwCMy9uTHDac'
+# Credenciales y Asset IDs de los dos formularios Kobo
 TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
-df_raw = cargar_datos_kobo_api(ASSET_ID_AICS, TOKEN_AICS)
+ASSET_ID_WASH = 'aBiwjqr5xDBwCMy9uTHDac'
+ASSET_ID_PROTECCION = 'aD96E3u2eqQUSUTW2EBHjx'
+
+# Carga paralela de ambos formularios
+df_wash = cargar_datos_kobo_api(ASSET_ID_WASH, TOKEN_AICS)
+df_prot_kobo = cargar_datos_kobo_api(ASSET_ID_PROTECCION, TOKEN_AICS)
+
+# Consolidación de la base de datos general
+df_raw = pd.concat([df_wash, df_prot_kobo], ignore_index=True) if not df_prot_kobo.empty else df_wash
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -794,7 +800,7 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (UBICADO AL FINAL Y BASADO EN case_id)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (BASADO EN EL FORMULARIO DE PROTECCIÓN)
 # -----------------------------------------------------------------------------
 st.subheader('Capítulo de Servicios de Protección')
 
