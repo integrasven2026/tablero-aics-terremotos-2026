@@ -233,31 +233,22 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Detección robusta de servicios de protección recorriendo todo el registro y texto completo
+        # Categorización exacta basada en las claves y valores de las cargas de Kobo
         tipo_servicio_proteccion = 'No especificado'
-        row_str_completo = str(row).lower()
-
-        # Buscar por coincidencias directas en claves o valores de los campos solicitados
-        encontro_servicio = False
         for k, v in row.items():
-            k_l = str(k).lower()
-            v_l = str(v).lower()
-            if any(term in k_l or term in v_l for term in ['gestor_coopi', 'gestor/a', 'abogado', 'oficial legal', 'orientacion_legal']):
-                tipo_servicio_proteccion = '1. Protección General' if 'gestor' in k_l or 'gestor' in v_l else '2. Orientación Legal'
-                encontro_servicio = True
-                break
-            elif any(term in k_l or term in v_l for term in ['psicologo_coopi', 'psicólogo', 'aps']):
-                tipo_servicio_proteccion = '3. APS Psicosocial'
-                encontro_servicio = True
-                break
-
-        if not encontro_servicio:
-            if 'gestor' in row_str_completo or 'caso' in row_str_completo:
-                tipo_servicio_proteccion = '1. Protección General'
-            elif 'legal' in row_str_completo or 'abogado' in row_str_completo:
+            k_lower = str(k).lower()
+            v_lower = str(v).lower()
+            
+            # Verificar si la clave o el valor contienen los nombres de los servicios
+            if 'orientacion_legal_coopi' in k_lower or 'orientacion_legal' in v_lower:
                 tipo_servicio_proteccion = '2. Orientación Legal'
-            elif 'psico' in row_str_completo:
+                break
+            elif 'psicologo_coopi' in k_lower or 'psicologa_coopi' in k_lower or 'psicolog' in v_lower:
                 tipo_servicio_proteccion = '3. APS Psicosocial'
+                break
+            elif 'gestor_coopi' in k_lower or 'gestor' in v_lower:
+                tipo_servicio_proteccion = '1. Protección General'
+                break
 
         sector_raw = str(
             row.get('Resultado:')
