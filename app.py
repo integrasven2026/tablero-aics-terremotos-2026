@@ -258,8 +258,10 @@ def cargar_datos_kobo_api(
 
         campamento = 'No especificado'
         for k, v in row.items():
+            if not isinstance(v, (str, int, float, bool)) or v is None:
+                continue
             k_l = str(k).lower()
-            if ('comunidad' in k_l or 'refugio' in k_l or 'establecimiento' in k_l) and pd.notnull(v):
+            if 'comunidad' in k_l or 'refugio' in k_l or 'establecimiento' in k_l:
                 val_str = str(v).strip()
                 if val_str and val_str.lower() not in ['none', 'nan', '']:
                     campamento = val_str
@@ -272,12 +274,14 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Extracción robusta del indicador o actividad seleccionada en Kobo
+        # Extracción segura y robusta del indicador o actividad en Kobo
         ind_val = '1.1'
         encontrado = False
         for col_i, val_i in row.items():
+            if not isinstance(val_i, (str, int, float, bool)) or val_i is None:
+                continue
             col_str_l = str(col_i).lower()
-            if ('indicador' in col_str_l or 'actividad' in col_str_l or 'resultado' in col_str_l) and pd.notnull(val_i):
+            if 'indicador' in col_str_l or 'actividad' in col_str_l or 'resultado' in col_str_l:
                 txt_ind = str(val_i).lower()
                 for k_ind in MAPA_INDICADORES_AICS.keys():
                     if k_ind in txt_ind:
@@ -287,10 +291,9 @@ def cargar_datos_kobo_api(
                 if encontrado:
                     break
 
-        # Si no se halló en columnas con nombre explícito, buscamos en todo el diccionario del row
         if not encontrado:
             for k, v in row.items():
-                if pd.notnull(v):
+                if isinstance(v, (str, int, float, bool)) and v is not None:
                     val_str = str(v).lower()
                     for k_ind in MAPA_INDICADORES_AICS.keys():
                         if k_ind in val_str:
@@ -303,12 +306,16 @@ def cargar_datos_kobo_api(
         beneficiarios = row.get('group_beneficiario', [])
         if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
             for idx, b in enumerate(beneficiarios):
+                if not isinstance(b, dict):
+                    continue
                 cid = ''
                 sexo_val = ''
                 rango_val = ''
                 disc_val = 'No'
 
                 for k, v in b.items():
+                    if not isinstance(v, (str, int, float, bool)) or v is None:
+                        continue
                     k_str = str(k)
                     k_lower = k_str.lower()
                     if 'codigoid' in k_lower or 'documento' in k_lower:
@@ -322,16 +329,18 @@ def cargar_datos_kobo_api(
 
                 if not sexo_val:
                     for k, v in b.items():
-                        k_l = str(k).lower()
-                        if 'sexo' in k_l and 'id_' not in k_l and 'count_' not in k_l:
-                            sexo_val = str(v).strip()
-                            break
+                        if isinstance(v, (str, int, float, bool)) and v is not None:
+                            k_l = str(k).lower()
+                            if 'sexo' in k_l and 'id_' not in k_l and 'count_' not in k_l:
+                                sexo_val = str(v).strip()
+                                break
                 if not rango_val:
                     for k, v in b.items():
-                        k_l = str(k).lower()
-                        if ('rango_etario' in k_l or 'edad' in k_l) and 'count_' not in k_l:
-                            rango_val = str(v).strip()
-                            break
+                        if isinstance(v, (str, int, float, bool)) and v is not None:
+                            k_l = str(k).lower()
+                            if ('rango_etario' in k_l or 'edad' in k_l) and 'count_' not in k_l:
+                                rango_val = str(v).strip()
+                                break
 
                 lista_sexos = [s.strip() for s in sexo_val.split(',') if s.strip()]
                 lista_rangos = [r.strip() for r in rango_val.split(',') if r.strip()]
@@ -637,7 +646,6 @@ if len(df_filtered) > 0:
         .reset_index()
     )
 
-    # Consolidar todos los indicadores configurados para que aparezcan en el gráfico
     todos_inds = []
     for k, nombre in MAPA_INDICADORES_AICS.items():
         match = summary_ind[summary_ind['Codigo'] == k]
@@ -655,7 +663,6 @@ if len(df_filtered) > 0:
     summary_final = pd.DataFrame(todos_inds)
     summary_final = summary_final.sort_values(by='Codigo', ascending=False)
 
-    # Gráfico de barras horizontal agrupado (Resultado del Mes vs Meta)
     fig_ind = go.Figure()
     fig_ind.add_trace(go.Bar(
         y=summary_final['Indicador'],
