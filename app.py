@@ -274,7 +274,6 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Extracción segura y robusta del indicador o actividad en Kobo
         ind_val = '1.1'
         encontrado = False
         for col_i, val_i in row.items():
@@ -417,7 +416,7 @@ TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
 df_raw = cargar_datos_kobo_api(ASSET_ID_AICS, TOKEN_AICS)
 
 # -----------------------------------------------------------------------------
-# FILTROS LATERALES
+# FILTROS LATERALES (SIN FILTRO DE SECTOR)
 # -----------------------------------------------------------------------------
 st.sidebar.header('Sincronización y Filtros')
 
@@ -439,9 +438,6 @@ meses_disp = ['Todos'] + sorted(
 )
 mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp)
 
-sectores_disp = ['Todos', 'WASH', 'Protección']
-sector_sel = st.sidebar.selectbox('Sector:', sectores_disp)
-
 sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
 sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp)
 
@@ -452,8 +448,6 @@ rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp)
 df_filtered = df_raw.copy()
 if mes_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Mes_Reporte'] == mes_sel]
-if sector_sel != 'Todos':
-    df_filtered = df_filtered[df_filtered['Sector'] == sector_sel]
 if sexo_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Sexo'] == sexo_sel]
 if rango_sel != 'Todos':
