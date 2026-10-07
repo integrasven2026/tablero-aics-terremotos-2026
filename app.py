@@ -274,7 +274,6 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Captura exacta de la cantidad reportada en el campo numérico del formulario Kobo
         cantidad_envio = 1
         for k, v in row.items():
             k_l = str(k).lower()
@@ -287,7 +286,6 @@ def cargar_datos_kobo_api(
                 except Exception:
                     pass
 
-        # Detección flexible del indicador
         ind_val = '1.1'
         encontrado = False
         for col_i, val_i in row.items():
@@ -315,6 +313,22 @@ def cargar_datos_kobo_api(
                             break
                     if encontrado:
                         break
+
+        # Capturar totales específicos de hombres y mujeres si vienen reportados directamente en columnas del envío
+        hombres_envio = 0
+        mujeres_envio = 0
+        for k, v in row.items():
+            k_l = str(k).lower()
+            if 'suma_h' in k_l or 'hombre' in k_l or 'masculino' in k_l:
+                try:
+                    hombres_envio += int(float(v))
+                except Exception:
+                    pass
+            elif 'suma_m' in k_l or 'mujer' in k_l or 'femenino' in k_l:
+                try:
+                    mujeres_envio += int(float(v))
+                except Exception:
+                    pass
 
         beneficiarios = row.get('group_beneficiario', [])
         if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
@@ -396,20 +410,53 @@ def cargar_datos_kobo_api(
                         'Ponderacion': 1,
                     })
         else:
-            registros.append({
-                '_id': row.get('_id'),
-                'Fecha': fecha,
-                'Estado': estado,
-                'Municipio': muni,
-                'Campamento': campamento,
-                'Sector': sector,
-                'ID_Unico': f"ROW_{row.get('_id')}_0",
-                'Sexo': 'Mujer',
-                'Rango_Etario': '18 A 49 Años',
-                'Discapacidad': 'No',
-                'Indicador': ind_val,
-                'Ponderacion': cantidad_envio,
-            })
+            # Si no hay grupo repetible pero tenemos desglose explícito de Hombres y Mujeres en el envío
+            if hombres_envio > 0 or mujeres_envio > 0:
+                if hombres_envio > 0:
+                    registros.append({
+                        '_id': row.get('_id'),
+                        'Fecha': fecha,
+                        'Estado': estado,
+                        'Municipio': muni,
+                        'Campamento': campamento,
+                        'Sector': sector,
+                        'ID_Unico': f"ROW_{row.get('_id')}_H",
+                        'Sexo': 'Hombre',
+                        'Rango_Etario': '18 A 49 Años',
+                        'Discapacidad': 'No',
+                        'Indicador': ind_val,
+                        'Ponderacion': hombres_envio,
+                    })
+                if mujeres_envio > 0:
+                    registros.append({
+                        '_id': row.get('_id'),
+                        'Fecha': fecha,
+                        'Estado': estado,
+                        'Municipio': muni,
+                        'Campamento': campamento,
+                        'Sector': sector,
+                        'ID_Unico': f"ROW_{row.get('_id')}_M",
+                        'Sexo': 'Mujer',
+                        'Rango_Etario': '18 A 49 Años',
+                        'Discapacidad': 'No',
+                        'Indicador': ind_val,
+                        'Ponderacion': mujeres_envio,
+                    })
+            else:
+                registros.append({
+                    '_id': row.get('_id'),
+                    'Fecha': fecha,
+                    'Estado': estado,
+                    'Municipio': muni,
+                    'Campamento': campamento,
+                    'Sector': sector,
+                    'ID_Unico': f"ROW_{row.get('_id')}_0",
+                    'Sexo': 'Mujer',
+                    'Rango_Etario': '18 A 49 Años',
+                    'Discapacidad': 'No',
+                    'Indicador': ind_val,
+                    'Ponderacion': cantidad_envio,
+                })
 
     df = pd.DataFrame(registros)
     if not df.empty and 'Fecha' in df.columns:
@@ -432,7 +479,7 @@ TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
 df_raw = cargar_datos_kobo_api(ASSET_ID_AICS, TOKEN_AICS)
 
 # -----------------------------------------------------------------------------
-# FILTROS LATERALES (SIN SECTOR)
+# FILTROS LATERALES
 # -----------------------------------------------------------------------------
 st.sidebar.header('Sincronización y Filtros')
 
