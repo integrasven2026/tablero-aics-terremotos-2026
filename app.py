@@ -225,6 +225,30 @@ def cargar_datos_kobo_api(
 
     registros = []
     for row in data:
+        # Extracción y conteo del grupo de metadatos Alfa (Participantes únicos y servicios)
+        meta_alfa = row.get('group_metadatos_alfa', {})
+        case_id_alfa = ''
+        if isinstance(meta_alfa, dict):
+            case_id_alfa = str(meta_alfa.get('case_id', '')).strip()
+        elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
+            case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
+
+        # Detección de servicios de protección específicos
+        tipo_servicio_proteccion = 'No especificado'
+        row_str_keys = str(row).lower()
+        
+        # Verificar si hay registros directos de gestor, orientación legal o psicólogo
+        has_gestor = any(('gestor_coopi' in str(k).lower() and str(v).strip() not in ['', 'none', 'nan', '0']) for k, v in row.items())
+        has_legal = any(('orientacion_legal_coopi' in str(k).lower() and str(v).strip() not in ['', 'none', 'nan', '0']) for k, v in row.items())
+        has_psico = any(('psicologo_coopi' in str(k).lower() and str(v).strip() not in ['', 'none', 'nan', '0']) for k, v in row.items())
+
+        if has_gestor or 'gestor_coopi_' in row_str_keys:
+            tipo_servicio_proteccion = '1. Protección General'
+        elif has_legal or 'orientacion_legal_coopi_' in row_str_keys:
+            tipo_servicio_proteccion = '2. Orientación Legal'
+        elif has_psico or 'psicologo_coopi_' in row_str_keys:
+            tipo_servicio_proteccion = '3. APS Psicosocial'
+
         sector_raw = str(
             row.get('Resultado:')
             or row.get('Sector')
@@ -314,7 +338,6 @@ def cargar_datos_kobo_api(
                     if encontrado:
                         break
 
-        # Capturar sumas específicas por género si vienen en el envío
         hombres_envio = 0
         mujeres_envio = 0
         for k, v in row.items():
@@ -388,7 +411,7 @@ def cargar_datos_kobo_api(
                     id_unico = (
                         f'ID_{cid}_{sub_i}'
                         if cid and cid.lower() not in ['none', '', '0', 'nan']
-                        else f"ROW_{row.get('_id')}_{idx}_{sub_i}"
+                        else (f'ALFA_{case_id_alfa}_{sub_i}' if case_id_alfa else f"ROW_{row.get('_id')}_{idx}_{sub_i}")
                     )
 
                     sexo = normalizar_sexo(s_item)
@@ -402,6 +425,7 @@ def cargar_datos_kobo_api(
                         'Municipio': muni,
                         'Campamento': campamento,
                         'Sector': sector,
+                        'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
                         'ID_Unico': id_unico,
                         'Sexo': sexo,
                         'Rango_Etario': rango_etario,
@@ -410,6 +434,7 @@ def cargar_datos_kobo_api(
                         'Ponderacion': 1,
                     })
         else:
+            id_base = f'ALFA_{case_id_alfa}' if case_id_alfa else f"ROW_{row.get('_id')}"
             if hombres_envio > 0 or mujeres_envio > 0:
                 if hombres_envio > 0:
                     registros.append({
@@ -419,7 +444,8 @@ def cargar_datos_kobo_api(
                         'Municipio': muni,
                         'Campamento': campamento,
                         'Sector': sector,
-                        'ID_Unico': f"ROW_{row.get('_id')}_H",
+                        'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
+                        'ID_Unico': f'{id_base}_H',
                         'Sexo': 'Hombre',
                         'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
                         'Discapacidad': 'No',
@@ -434,7 +460,8 @@ def cargar_datos_kobo_api(
                         'Municipio': muni,
                         'Campamento': campamento,
                         'Sector': sector,
-                        'ID_Unico': f"ROW_{row.get('_id')}_M",
+                        'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
+                        'ID_Unico': f'{id_base}_M',
                         'Sexo': 'Mujer',
                         'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
                         'Discapacidad': 'No',
@@ -449,7 +476,8 @@ def cargar_datos_kobo_api(
                     'Municipio': muni,
                     'Campamento': campamento,
                     'Sector': sector,
-                    'ID_Unico': f"ROW_{row.get('_id')}_0",
+                    'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
+                    'ID_Unico': f'{id_base}_0',
                     'Sexo': 'Mujer',
                     'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
                     'Discapacidad': 'No',
@@ -547,6 +575,47 @@ col_m, col_h, col_d = st.columns(3)
 col_m.metric('Participantes Únicos: Mujeres', f'{total_mujeres:,}')
 col_h.metric('Participantes Únicos: Hombres', f'{total_hombres:,}')
 col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (NUEVO)
+# -----------------------------------------------------------------------------
+st.subheader('Capítulo de Servicios de Protección')
+
+if not df_filtered.empty and 'Tipo_Servicio_Proteccion' in df_filtered.columns:
+    df_proteccion = df_filtered[df_filtered['Tipo_Servicio_Proteccion'] != 'No especificado']
+    
+    total_casos_proteccion = int(df_proteccion['Ponderacion'].sum()) if not df_proteccion.empty else 0
+    st.metric('Total de Casos de Protección Atendidos', f'{total_casos_proteccion:,}')
+
+    if not df_proteccion.empty:
+        df_servicios_count = (
+            df_proteccion.groupby('Tipo_Servicio_Proteccion')['Ponderacion']
+            .sum()
+            .reset_index(name='Cantidad_Casos')
+        )
+        
+        fig_prot = px.bar(
+            df_servicios_count,
+            x='Tipo_Servicio_Proteccion',
+            y='Cantidad_Casos',
+            text='Cantidad_Casos',
+            color='Tipo_Servicio_Proteccion',
+            color_discrete_sequence=PALETA_COOPI,
+        )
+        fig_prot.update_traces(textposition='outside')
+        fig_prot.update_layout(
+            showlegend=False,
+            font=font_layout,
+            xaxis_title='Tipo de Servicio de Protección',
+            yaxis_title='Cantidad de Casos',
+        )
+        st.plotly_chart(fig_prot, width='stretch')
+    else:
+        st.info('No hay registros de servicios de protección bajo los filtros actuales.')
+else:
+    st.info('No hay datos disponibles para el capítulo de protección.')
 
 st.markdown('---')
 
@@ -682,8 +751,6 @@ st.markdown('---')
 
 # -----------------------------------------------------------------------------
 # REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES Y ACTIVIDADES)
-# Nota: Para el gráfico de indicadores usamos el dataframe filtrado por mes y rango etario, 
-# permitiendo que el filtro de sexo actúe correctamente sobre las cantidades ponderadas.
 # -----------------------------------------------------------------------------
 st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
 
