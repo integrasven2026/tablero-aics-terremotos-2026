@@ -233,18 +233,19 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Categorización exacta de servicios de protección
+        # Categorización robusta barriendo todas las claves del diccionario en busca de los servicios de protección
         tipo_servicio_proteccion = 'No especificado'
         for k, v in row.items():
             k_lower = str(k).lower()
             v_lower = str(v).lower()
-            if 'orientacion_legal_coopi' in k_lower or 'orientacion_legal' in v_lower:
+            
+            if 'orientacion_legal_coopi' in k_lower or 'orientacion_legal' in k_lower or 'orientacion_legal' in v_lower:
                 tipo_servicio_proteccion = '2. Orientación Legal'
                 break
-            elif 'psicologo_coopi' in k_lower or 'psicologa_coopi' in k_lower or 'psicolog' in v_lower:
+            elif 'psicologo_coopi' in k_lower or 'psicologa_coopi' in k_lower or 'psicolog' in k_lower or 'psicolog' in v_lower:
                 tipo_servicio_proteccion = '3. APS Psicosocial'
                 break
-            elif 'gestor_coopi' in k_lower or 'gestor' in v_lower:
+            elif 'gestor_coopi' in k_lower or 'gestor' in k_lower or 'gestor' in v_lower:
                 tipo_servicio_proteccion = '1. Protección General'
                 break
 
