@@ -148,7 +148,7 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
-# MAPEO DE INDICADORES / ACTIVIDADES
+# MAPEO DE INDICADORES / ACTIVIDADES Y SUS RESULTADOS (R1 y R2)
 MAPA_INDICADORES_AICS = {
     '1.1': '1.1 N.º de personas con acceso a artículos esenciales de higiene',
     '1.2': '1.2 N.º de personas con acceso a agua potable (15L/día)',
@@ -162,17 +162,22 @@ MAPA_INDICADORES_AICS = {
     'r2a4': 'R2A4: Sensibilización VBG y protección niñez',
 }
 
-METAS_INDICADORES_AICS = {
-    '1.1': {'meta': 4800, 'tipo': 'numero'},
-    '1.2': {'meta': 2200, 'tipo': 'numero'},
-    '1.3': {'meta': 100, 'tipo': 'porcentaje'},
-    '2.1': {'meta': 1580, 'tipo': 'numero'},
-    '2.2': {'meta': 80, 'tipo': 'porcentaje'},
-    '2.3': {'meta': 90, 'tipo': 'numero'},
-    'r1a4': {'meta': 2200, 'tipo': 'numero'},
-    'r1a5': {'meta': 2500, 'tipo': 'numero'},
-    'r2a2': {'meta': 195, 'tipo': 'numero'},
-    'r2a4': {'meta': 1500, 'tipo': 'numero'},
+MAPA_RESULTADOS = {
+    '1.1': 'Resultado 1 (WASH)',
+    '1.2': 'Resultado 1 (WASH)',
+    '1.3': 'Resultado 1 (WASH)',
+    'r1a4': 'Resultado 1 (WASH)',
+    'r1a5': 'Resultado 1 (WASH)',
+    '2.1': 'Resultado 2 (Protección)',
+    '2.2': 'Resultado 2 (Protección)',
+    '2.3': 'Resultado 2 (Protección)',
+    'r2a2': 'Resultado 2 (Protección)',
+    'r2a4': 'Resultado 2 (Protección)',
+}
+
+METAS_RESULTADOS = {
+    'Resultado 1 (WASH)': 4800,
+    'Resultado 2 (Protección)': 4134,
 }
 
 font_layout = dict(family='Quicksand', size=13)
@@ -268,13 +273,12 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Capturar indicador / actividad reportada desde Kobo
         ind_val = '1.1'
         for col_i, val_i in row.items():
             col_str_l = str(col_i).lower()
             if ('indicador' in col_str_l or 'actividad' in col_str_l or 'resultado' in col_str_l) and pd.notnull(val_i):
                 txt_ind = str(val_i).lower()
-                for k_ind in METAS_INDICADORES_AICS.keys():
+                for k_ind in MAPA_INDICADORES_AICS.keys():
                     if k_ind in txt_ind:
                         ind_val = k_ind.lower()
                         break
@@ -595,73 +599,73 @@ st_folium(mapa, width='stretch', height=450)
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# ALCANCE Y COMPARACIÓN DE INDICADORES (META VS RESULTADO DEL MES)
+# REPORTE Y COMPARATIVA POR RESULTADOS (R1 Y R2)
 # -----------------------------------------------------------------------------
-st.subheader('Alcance de los Indicadores y Actividades del Proyecto AICS')
+st.subheader('Avance Global por Resultados del Proyecto (Resultado 1 vs Resultado 2)')
 
 if len(df_filtered) > 0:
-    records_ind = []
+    records_res = []
     for _, row in df_filtered.iterrows():
         cod = str(row.get('Indicador', '1.1')).strip().lower()
-        records_ind.append({
-            'Codigo': cod.upper(),
-            'Nombre_Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador/Actividad {cod.upper()}'),
+        resultado_asociado = MAPA_RESULTADOS.get(cod, 'Resultado 1 (WASH)')
+        records_res.append({
+            'Resultado': resultado_asociado,
             'ID_Unico': row.get('ID_Unico'),
         })
 
-    df_ind = pd.DataFrame(records_ind)
-    summary_ind = (
-        df_ind.groupby(['Codigo', 'Nombre_Indicador'])
+    df_res = pd.DataFrame(records_res)
+    summary_res = (
+        df_res.groupby('Resultado')
         .agg(Resultado_Mes=('ID_Unico', 'nunique'))
         .reset_index()
     )
 
+    # Asignar metas globales por Resultado
     metas_vals, porcentajes_avance = [], []
-    for _, r in summary_ind.iterrows():
-        c = r['Codigo'].lower()
-        meta_info = METAS_INDICADORES_AICS.get(c, {'meta': 100, 'tipo': 'numero'})
-        meta_val = meta_info['meta']
+    for _, r in summary_res.iterrows():
+        res_nombre = r['Resultado']
+        meta_val = METAS_RESULTADOS.get(res_nombre, 4000)
         metas_vals.append(meta_val)
         alc = (r['Resultado_Mes'] / meta_val) * 100 if meta_val > 0 else 0
         porcentajes_avance.append(f'{alc:.1f}%')
 
-    summary_ind['Meta'] = metas_vals
-    summary_ind['% Avance'] = porcentajes_avance
+    summary_res['Meta_Global'] = metas_vals
+    summary_res['% Avance'] = porcentajes_avance
 
-    # Gráfico de barras agrupadas: Resultado del Mes vs Meta
-    fig_ind = go.Figure()
-    fig_ind.add_trace(go.Bar(
-        x=summary_ind['Nombre_Indicador'],
-        y=summary_ind['Resultado_Mes'],
-        name='Resultado del Mes',
-        text=summary_ind['Resultado_Mes'],
+    # Gráfico de barras agrupadas: Resultado del Mes vs Meta por Resultado (R1 y R2)
+    fig_res = go.Figure()
+    fig_res.add_trace(go.Bar(
+        x=summary_res['Resultado'],
+        y=summary_res['Resultado_Mes'],
+        name='Resultado del Mes (Únicos)',
+        text=summary_res['Resultado_Mes'],
         textposition='outside',
         marker_color=COLOR_VERDE_COOPI
     ))
-    fig_ind.add_trace(go.Bar(
-        x=summary_ind['Nombre_Indicador'],
-        y=summary_ind['Meta'],
-        name='Meta del Proyecto',
-        text=summary_ind['Meta'],
+    fig_res.add_trace(go.Bar(
+        x=summary_res['Resultado'],
+        y=summary_res['Meta_Global'],
+        name='Meta Global del Resultado',
+        text=summary_res['Meta_Global'],
         textposition='outside',
         marker_color=COLOR_AZUL_COOPI
     ))
 
-    fig_ind.update_layout(
+    fig_res.update_layout(
         barmode='group',
-        title='Comparativa: Resultado del Mes vs Meta del Proyecto por Indicador / Actividad',
+        title='Comparativa de Avance: Resultado del Mes vs Meta Global (R1 y R2)',
         font=font_layout,
-        xaxis_title='Indicador / Actividad',
-        yaxis_title='Cantidad de Personas / Unidades',
+        xaxis_title='Resultado del Proyecto',
+        yaxis_title='Cantidad de Participantes Únicos',
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
     )
     
-    st.plotly_chart(fig_ind, width='stretch')
+    st.plotly_chart(fig_res, width='stretch')
 
-    st.markdown('#### Detalle de Avance por Indicador')
-    st.dataframe(summary_ind, width='stretch', hide_index=True)
+    st.markdown('#### Resumen Consolidado por Resultados')
+    st.dataframe(summary_res, width='stretch', hide_index=True)
 else:
     st.info(
-        'No hay registros suficientes para calcular los indicadores con los'
+        'No hay registros suficientes para calcular el avance por resultados con los'
         ' filtros actuales.'
     )
