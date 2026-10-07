@@ -225,7 +225,7 @@ def cargar_datos_kobo_api(
 
     registros = []
     for row in data:
-        # Extracción y conteo del grupo de metadatos Alfa (Participantes únicos y servicios)
+        # Grupo de metadatos Alfa (Participantes únicos y servicios)
         meta_alfa = row.get('group_metadatos_alfa', {})
         case_id_alfa = ''
         if isinstance(meta_alfa, dict):
@@ -233,13 +233,11 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Categorización exacta basada en las claves y valores de las cargas de Kobo
+        # Categorización exacta de servicios de protección
         tipo_servicio_proteccion = 'No especificado'
         for k, v in row.items():
             k_lower = str(k).lower()
             v_lower = str(v).lower()
-            
-            # Verificar si la clave o el valor contienen los nombres de los servicios
             if 'orientacion_legal_coopi' in k_lower or 'orientacion_legal' in v_lower:
                 tipo_servicio_proteccion = '2. Orientación Legal'
                 break
@@ -799,12 +797,12 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (UBICADO AL FINAL)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (UBICADO AL FINAL Y USANDO BASE COMPLETA)
 # -----------------------------------------------------------------------------
 st.subheader('Capítulo de Servicios de Protección')
 
-if not df_filtered.empty and 'Tipo_Servicio_Proteccion' in df_filtered.columns:
-    df_proteccion = df_filtered[df_filtered['Tipo_Servicio_Proteccion'] != 'No especificado']
+if not df_raw.empty and 'Tipo_Servicio_Proteccion' in df_raw.columns:
+    df_proteccion = df_raw[df_raw['Tipo_Servicio_Proteccion'] != 'No especificado']
     
     total_casos_proteccion = int(df_proteccion['Ponderacion'].sum()) if not df_proteccion.empty else 0
     st.metric('Total de Casos de Protección Atendidos', f'{total_casos_proteccion:,}')
@@ -833,6 +831,6 @@ if not df_filtered.empty and 'Tipo_Servicio_Proteccion' in df_filtered.columns:
         )
         st.plotly_chart(fig_prot, width='stretch')
     else:
-        st.info('No hay registros de servicios de protección bajo los filtros actuales.')
+        st.info('No hay registros de servicios de protección en la base de datos.')
 else:
     st.info('No hay datos disponibles para el capítulo de protección.')
