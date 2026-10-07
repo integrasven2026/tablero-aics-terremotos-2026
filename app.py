@@ -274,7 +274,7 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Captura exacta de la cantidad reportada en el formulario Kobo
+        # Capturar la cantidad exacta reportada en el campo numérico del formulario Kobo
         cantidad_envio = 1
         for k, v in row.items():
             k_l = str(k).lower()
@@ -369,7 +369,7 @@ TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
 df_raw = cargar_datos_kobo_api(ASSET_ID_AICS, TOKEN_AICS)
 
 # -----------------------------------------------------------------------------
-# FILTROS LATERALES (SIN SECTOR)
+# FILTROS LATERALES
 # -----------------------------------------------------------------------------
 st.sidebar.header('Sincronización y Filtros')
 
