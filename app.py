@@ -274,23 +274,11 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Capturar la cantidad exacta reportada en el campo numérico del formulario Kobo
+        # Capturar la cantidad exacta reportada en el formulario (ej. 18, 11, 17, 7, 16)
         cantidad_envio = 1
         for k, v in row.items():
             k_l = str(k).lower()
-            if any(
-                x in k_l
-                for x in [
-                    'escriba el número',
-                    'número de',
-                    'numero de',
-                    'num_personas',
-                    'suma_total',
-                    'cantidad',
-                    'tot_pers',
-                    'suma_n',
-                ]
-            ):
+            if any(x in k_l for x in ['escriba el número', 'número de', 'numero de', 'num_personas', 'suma_total', 'cantidad', 'tot_pers', 'suma_n']):
                 try:
                     val_num = int(float(v))
                     if val_num > 0:
@@ -305,11 +293,7 @@ def cargar_datos_kobo_api(
             if not isinstance(val_i, (str, int, float, bool)) or val_i is None:
                 continue
             col_str_l = str(col_i).lower()
-            if (
-                'indicador' in col_str_l
-                or 'actividad' in col_str_l
-                or 'resultado' in col_str_l
-            ):
+            if 'indicador' in col_str_l or 'actividad' in col_str_l or 'resultado' in col_str_l:
                 txt_ind = str(val_i).lower()
                 for k_ind in MAPA_INDICADORES_AICS.keys():
                     if k_ind in txt_ind:
@@ -331,6 +315,7 @@ def cargar_datos_kobo_api(
                     if encontrado:
                         break
 
+        # Forzar que la ponderación sea exactamente la cantidad reportada en el envío principal
         registros.append({
             '_id': row.get('_id'),
             'Fecha': fecha,
@@ -340,9 +325,7 @@ def cargar_datos_kobo_api(
             'Sector': sector,
             'ID_Unico': f"ROW_{row.get('_id')}",
             'Sexo': 'Mujer',
-            'Rango_Etario': (
-                '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años'
-            ),
+            'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
             'Discapacidad': 'No',
             'Indicador': ind_val,
             'Ponderacion': cantidad_envio,
@@ -418,19 +401,11 @@ pct_meta = (
     else 0
 )
 
-conteo_sexo = (
-    df_unicos.groupby('Sexo')['Ponderacion'].sum()
-    if not df_unicos.empty
-    else pd.Series()
-)
+conteo_sexo = df_unicos.groupby('Sexo')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
 total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
 
-conteo_disc = (
-    df_unicos.groupby('Discapacidad')['Ponderacion'].sum()
-    if not df_unicos.empty
-    else pd.Series()
-)
+conteo_disc = df_unicos.groupby('Discapacidad')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
 total_discapacidad = int(conteo_disc.get('Sí', 0))
 
 col1, col2, col3 = st.columns(3)
@@ -462,12 +437,12 @@ with g1:
             .sum()
             .reset_index(name='Cantidad')
         )
-
+        
         orden_etario = {
             '0 A 4 Años': 1,
             '5 A 17 Años': 2,
             '18 A 49 Años': 3,
-            '50 Años O Más': 4,
+            '50 Años O Más': 4
         }
         df_demo['Orden'] = df_demo['Rango_Etario'].map(orden_etario).fillna(99)
         df_demo = df_demo.sort_values('Orden')
@@ -487,15 +462,7 @@ with g1:
             font=font_layout,
             xaxis_title='Rango Etario',
             yaxis_title='Cantidad',
-            xaxis={
-                'categoryorder': 'array',
-                'categoryarray': [
-                    '0 A 4 Años',
-                    '5 A 17 Años',
-                    '18 A 49 Años',
-                    '50 Años O Más',
-                ],
-            },
+            xaxis={'categoryorder': 'array', 'categoryarray': ['0 A 4 Años', '5 A 17 Años', '18 A 49 Años', '50 Años O Más']}
         )
         st.plotly_chart(fig_demo, width='stretch')
     else:
@@ -542,22 +509,18 @@ if not df_unicos.empty:
     muni_resumen = []
     for (est, mun), grupo in df_unicos.groupby(['Estado', 'Municipio']):
         tot = int(grupo['Ponderacion'].sum())
-        campamentos = sorted([
-            c
-            for c in grupo['Campamento'].dropna().unique()
-            if c and c != 'No especificado'
-        ])
-        campamentos_str = '<br>'.join([f'- {c}' for c in campamentos])
+        campamentos = sorted([c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'])
+        campamentos_str = "<br>".join([f"- {c}" for c in campamentos])
         if not campamentos_str:
-            campamentos_str = '- No especificado'
-
+            campamentos_str = "- No especificado"
+            
         muni_resumen.append({
             'Estado': est,
             'Municipio': mun,
             'Total_Unicos': tot,
-            'Campamentos': campamentos_str,
+            'Campamentos': campamentos_str
         })
-
+        
     df_mapa = pd.DataFrame(muni_resumen)
 
     for _, m_row in df_mapa.iterrows():
@@ -610,9 +573,7 @@ if len(df_ind_base) > 0:
         cod = str(row.get('Indicador', '1.1')).strip().lower()
         records_ind.append({
             'Codigo': cod,
-            'Indicador': MAPA_INDICADORES_AICS.get(
-                cod, f'Indicador/Actividad {cod.upper()}'
-            ),
+            'Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador/Actividad {cod.upper()}'),
             'Ponderacion': row.get('Ponderacion', 1),
         })
 
@@ -634,35 +595,31 @@ if len(df_ind_base) > 0:
             'Indicador': nombre,
             'Resultado_Mes': res_val,
             'Meta': meta_val,
-            '% Avance': f'{alc:.1f}%',
+            '% Avance': f'{alc:.1f}%'
         })
 
     summary_final = pd.DataFrame(todos_inds)
     summary_final = summary_final.sort_values(by='Codigo', ascending=False)
 
     fig_ind = go.Figure()
-    fig_ind.add_trace(
-        go.Bar(
-            y=summary_final['Indicador'],
-            x=summary_final['Resultado_Mes'],
-            name='Resultado del Mes',
-            orientation='h',
-            text=summary_final['Resultado_Mes'],
-            textposition='outside',
-            marker_color=COLOR_VERDE_COOPI,
-        )
-    )
-    fig_ind.add_trace(
-        go.Bar(
-            y=summary_final['Indicador'],
-            x=summary_final['Meta'],
-            name='Meta Oficial',
-            orientation='h',
-            text=summary_final['Meta'],
-            textposition='outside',
-            marker_color=COLOR_AZUL_COOPI,
-        )
-    )
+    fig_ind.add_trace(go.Bar(
+        y=summary_final['Indicador'],
+        x=summary_final['Resultado_Mes'],
+        name='Resultado del Mes',
+        orientation='h',
+        text=summary_final['Resultado_Mes'],
+        textposition='outside',
+        marker_color=COLOR_VERDE_COOPI
+    ))
+    fig_ind.add_trace(go.Bar(
+        y=summary_final['Indicador'],
+        x=summary_final['Meta'],
+        name='Meta Oficial',
+        orientation='h',
+        text=summary_final['Meta'],
+        textposition='outside',
+        marker_color=COLOR_AZUL_COOPI
+    ))
 
     fig_ind.update_layout(
         barmode='group',
@@ -670,20 +627,14 @@ if len(df_ind_base) > 0:
         font=font_layout,
         xaxis_title='Cantidad / Porcentaje',
         yaxis_title='Indicador / Actividad',
-        legend=dict(
-            orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1
-        ),
-        height=650,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        height=650
     )
-
+    
     st.plotly_chart(fig_ind, width='stretch')
 
     st.markdown('#### Detalle de Avance por Indicador y Actividad')
-    st.dataframe(
-        summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']],
-        width='stretch',
-        hide_index=True,
-    )
+    st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
 else:
     st.info(
         'No hay registros suficientes para calcular los indicadores con los'
