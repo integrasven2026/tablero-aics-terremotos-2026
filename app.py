@@ -156,7 +156,7 @@ MAPA_INDICADORES_AICS = {
     '1.2': 'Indicador 1.2: N.º de personas con acceso a agua potable (15L/día)',
     '1.3': 'Indicador 1.3: % Personas con discapacidad con WASH adaptadas',
     '2.1': 'Indicador 2.1: N.º de niños y niñas con apoyo psicosocial / CFS',
-    '2.2': 'Indicador 2.2: % Población con conocimiento de prevención VBG',
+    '2.2': 'Indicador 2.2: % Población con conocimiento de prevention VBG',
     '2.3': 'Indicador 2.3: N.º de personas con medidas de protección y prevención',
     'r1a4': 'R1A4: Fortalecimiento capacidades (WASH/Dignidad)',
     'r1a5': 'R1A5: Sesiones informativas y sensibilización',
@@ -205,7 +205,7 @@ def normalizar_discapacidad(valor):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX
+# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (CON PONDERACIÓN DE CANTIDAD)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -274,6 +274,20 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
+        # Capturar cantidad reportada en el formulario (num_personas, suma_total, etc.)
+        cantidad_reportada = 1
+        for k, v in row.items():
+            k_l = str(k).lower()
+            if any(x in k_l for x in ['num_personas', 'suma_total', 'cantidad', 'tot_pers']):
+                try:
+                    val_num = int(float(v))
+                    if val_num > 0:
+                        cantidad_reportada = val_num
+                        break
+                except Exception:
+                    pass
+
+        # Detección del indicador / actividad
         ind_val = '1.1'
         encontrado = False
         for col_i, val_i in row.items():
@@ -379,8 +393,10 @@ def cargar_datos_kobo_api(
                         'Rango_Etario': rango_etario,
                         'Discapacidad': discapacidad,
                         'Indicador': ind_val,
+                        'Cantidad_Ponderada': 1,
                     })
         else:
+            # Si no hay grupo repetible, usamos la cantidad reportada en el envío principal
             registros.append({
                 '_id': row.get('_id'),
                 'Fecha': fecha,
@@ -393,6 +409,7 @@ def cargar_datos_kobo_api(
                 'Rango_Etario': '18 A 49 Años',
                 'Discapacidad': 'No',
                 'Indicador': ind_val,
+                'Cantidad_Ponderada': cantidad_reportada,
             })
 
     df = pd.DataFrame(registros)
@@ -416,7 +433,7 @@ TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
 df_raw = cargar_datos_kobo_api(ASSET_ID_AICS, TOKEN_AICS)
 
 # -----------------------------------------------------------------------------
-# FILTROS LATERALES (SIN FILTRO DE SECTOR)
+# FILTROS LATERALES
 # -----------------------------------------------------------------------------
 st.sidebar.header('Sincronización y Filtros')
 
@@ -456,21 +473,21 @@ if rango_sel != 'Todos':
 # -----------------------------------------------------------------------------
 # MÉTRICAS CLAVE
 # -----------------------------------------------------------------------------
-total_servicios = len(df_filtered)
+total_servicios = int(df_filtered['Cantidad_Ponderada'].sum())
 df_unicos = df_filtered.drop_duplicates(subset=['ID_Unico'])
-total_unicos = len(df_unicos)
+total_unicos = int(df_unicos['Cantidad_Ponderada'].sum())
 pct_meta = (
     (total_unicos / META_PARTICIPANTES_UNICOS) * 100
     if META_PARTICIPANTES_UNICOS > 0
     else 0
 )
 
-conteo_sexo = df_unicos['Sexo'].value_counts() if not df_unicos.empty else pd.Series()
-total_mujeres = conteo_sexo.get('Mujer', 0)
-total_hombres = conteo_sexo.get('Hombre', 0)
+conteo_sexo = df_unicos.groupby('Sexo')['Cantidad_Ponderada'].sum() if not df_unicos.empty else pd.Series()
+total_mujeres = int(conteo_sexo.get('Mujer', 0))
+total_hombres = int(conteo_sexo.get('Hombre', 0))
 
-conteo_disc = df_unicos['Discapacidad'].value_counts() if not df_unicos.empty else pd.Series()
-total_discapacidad = conteo_disc.get('Sí', 0)
+conteo_disc = df_unicos.groupby('Discapacidad')['Cantidad_Ponderada'].sum() if not df_unicos.empty else pd.Series()
+total_discapacidad = int(conteo_disc.get('Sí', 0))
 
 col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
@@ -497,8 +514,8 @@ with g1:
     st.subheader('Participantes Únicos por Rango Etario y Sexo')
     if total_unicos > 0 and 'Rango_Etario' in df_unicos.columns:
         df_demo = (
-            df_unicos.groupby(['Rango_Etario', 'Sexo'])
-            .size()
+            df_unicos.groupby(['Rango_Etario', 'Sexo'])['Cantidad_Ponderada']
+            .sum()
             .reset_index(name='Cantidad')
         )
         
@@ -536,8 +553,8 @@ with g2:
     st.subheader('Participantes Únicos por Municipio')
     if total_unicos > 0 and 'Municipio' in df_unicos.columns:
         df_muni = (
-            df_unicos.groupby(['Estado', 'Municipio'])
-            .size()
+            df_unicos.groupby(['Estado', 'Municipio'])['Cantidad_Ponderada']
+            .sum()
             .reset_index(name='Cantidad')
         )
         df_muni = df_muni.sort_values(by='Cantidad', ascending=True)
@@ -572,7 +589,7 @@ mapa = folium.Map(
 if total_unicos > 0:
     muni_resumen = []
     for (est, mun), grupo in df_unicos.groupby(['Estado', 'Municipio']):
-        tot = len(grupo)
+        tot = int(grupo['Cantidad_Ponderada'].sum())
         campamentos = sorted([c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'])
         campamentos_str = "<br>".join([f"- {c}" for c in campamentos])
         if not campamentos_str:
@@ -630,14 +647,14 @@ if len(df_filtered) > 0:
         records_ind.append({
             'Codigo': cod,
             'Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador/Actividad {cod.upper()}'),
-            'ID_Unico': row.get('ID_Unico'),
+            'Cantidad_Ponderada': row.get('Cantidad_Ponderada', 1),
         })
 
     df_ind = pd.DataFrame(records_ind)
     summary_ind = (
-        df_ind.groupby(['Codigo', 'Indicador'])
-        .agg(Resultado_Mes=('ID_Unico', 'nunique'))
-        .reset_index()
+        df_ind.groupby(['Codigo', 'Indicador'])['Cantidad_Ponderada']
+        .sum()
+        .reset_index(name='Resultado_Mes')
     )
 
     todos_inds = []
