@@ -148,7 +148,7 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
-# MAPEO COMPLETO DE INDICADORES / ACTIVIDADES (INCLUYENDO R1 Y R2)
+# MAPEO DE INDICADORES / ACTIVIDADES OFICIALES
 MAPA_INDICADORES_AICS = {
     'ob-1': 'OB-1: % Asistencia humanitaria segura y participativa',
     'ob-2': 'OB-2: % Acceso a agua y servicios higiénico-sanitarios',
@@ -272,7 +272,7 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Detección flexible del indicador reportado en Kobo
+        # Extracción robusta del indicador o actividad seleccionada en Kobo
         ind_val = '1.1'
         encontrado = False
         for col_i, val_i in row.items():
@@ -286,6 +286,19 @@ def cargar_datos_kobo_api(
                         break
                 if encontrado:
                     break
+
+        # Si no se halló en columnas con nombre explícito, buscamos en todo el diccionario del row
+        if not encontrado:
+            for k, v in row.items():
+                if pd.notnull(v):
+                    val_str = str(v).lower()
+                    for k_ind in MAPA_INDICADORES_AICS.keys():
+                        if k_ind in val_str:
+                            ind_val = k_ind.lower()
+                            encontrado = True
+                            break
+                    if encontrado:
+                        break
 
         beneficiarios = row.get('group_beneficiario', [])
         if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
