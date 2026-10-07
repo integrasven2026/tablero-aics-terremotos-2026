@@ -1,4 +1,3 @@
-import io
 import os
 import re
 import folium
@@ -149,28 +148,18 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
+# MAPEO DE INDICADORES / ACTIVIDADES
 MAPA_INDICADORES_AICS = {
-    '1.1': (
-        '1.1 N.º de personas con acceso a la cantidad mínima de artículos'
-        ' esenciales de higiene'
-    ),
-    '1.2': '1.2 N.º de personas con acceso a al menos 15 litros de agua potable',
-    '1.3': (
-        '1.3 % de personas con discapacidad y movilidad reducida con acceso a'
-        ' WASH adaptadas'
-    ),
-    '2.1': (
-        '2.1 N.º de niños y niñas que reciben apoyo psicosocial / Child'
-        ' Friendly Spaces'
-    ),
-    '2.2': (
-        '2.2 % población con conocimiento de servicios para prevención y'
-        ' respuesta a VBG'
-    ),
-    '2.3': (
-        '2.3 N.º de personas beneficiadas con medidas específicas de protección'
-        ' y prevención'
-    ),
+    '1.1': '1.1 N.º de personas con acceso a artículos esenciales de higiene',
+    '1.2': '1.2 N.º de personas con acceso a agua potable (15L/día)',
+    '1.3': '1.3 % personas con discapacidad con acceso a WASH adaptadas',
+    '2.1': '2.1 N.º de niños y niñas que reciben apoyo psicosocial / CFS',
+    '2.2': '2.2 % población con conocimiento de prevención y respuesta a VBG',
+    '2.3': '2.3 N.º de personas beneficiadas con medidas de protección',
+    'r1a4': 'R1A4: Fortalecimiento capacidades (WASH/Dignidad)',
+    'r1a5': 'R1A5: Sesiones informativas y sensibilización',
+    'r2a2': 'R2A2: Gestión de casos y asistencia personalizada',
+    'r2a4': 'R2A4: Sensibilización VBG y protección niñez',
 }
 
 METAS_INDICADORES_AICS = {
@@ -180,6 +169,10 @@ METAS_INDICADORES_AICS = {
     '2.1': {'meta': 1580, 'tipo': 'numero'},
     '2.2': {'meta': 80, 'tipo': 'porcentaje'},
     '2.3': {'meta': 90, 'tipo': 'numero'},
+    'r1a4': {'meta': 2200, 'tipo': 'numero'},
+    'r1a5': {'meta': 2500, 'tipo': 'numero'},
+    'r2a2': {'meta': 195, 'tipo': 'numero'},
+    'r2a4': {'meta': 1500, 'tipo': 'numero'},
 }
 
 font_layout = dict(family='Quicksand', size=13)
@@ -208,7 +201,7 @@ def normalizar_discapacidad(valor):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (SEGUNDA HOJA / BENEFICIARIOS)
+# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -275,6 +268,17 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
+        # Capturar indicador / actividad reportada desde Kobo
+        ind_val = '1.1'
+        for col_i, val_i in row.items():
+            col_str_l = str(col_i).lower()
+            if ('indicador' in col_str_l or 'actividad' in col_str_l or 'resultado' in col_str_l) and pd.notnull(val_i):
+                txt_ind = str(val_i).lower()
+                for k_ind in METAS_INDICADORES_AICS.keys():
+                    if k_ind in txt_ind:
+                        ind_val = k_ind.lower()
+                        break
+
         beneficiarios = row.get('group_beneficiario', [])
         if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
             for idx, b in enumerate(beneficiarios):
@@ -310,7 +314,6 @@ def cargar_datos_kobo_api(
 
                 lista_sexos = [s.strip() for s in sexo_val.split(',') if s.strip()]
                 lista_rangos = [r.strip() for r in rango_val.split(',') if r.strip()]
-
                 max_len = max(len(lista_sexos), len(lista_rangos), 1)
 
                 for sub_i in range(max_len):
@@ -334,15 +337,6 @@ def cargar_datos_kobo_api(
                     sexo = normalizar_sexo(s_item)
                     rango_etario = limpiar_texto(r_item)
                     discapacidad = normalizar_discapacidad(disc_val)
-
-                    ind_val = '1.1'
-                    for col_i, val_i in row.items():
-                        if 'Indicador' in str(col_i) and pd.notnull(val_i):
-                            txt_ind = str(val_i)
-                            for k_ind in ['1.1', '1.2', '1.3', '2.1', '2.2', '2.3']:
-                                if k_ind in txt_ind:
-                                    ind_val = k_ind
-                                    break
 
                     registros.append({
                         '_id': row.get('_id'),
@@ -369,7 +363,7 @@ def cargar_datos_kobo_api(
                 'Sexo': 'Mujer',
                 'Rango_Etario': '18 A 49 Años',
                 'Discapacidad': 'No',
-                'Indicador': '1.1',
+                'Indicador': ind_val,
             })
 
     df = pd.DataFrame(registros)
@@ -454,7 +448,6 @@ total_hombres = conteo_sexo.get('Hombre', 0)
 conteo_disc = df_unicos['Discapacidad'].value_counts() if not df_unicos.empty else pd.Series()
 total_discapacidad = conteo_disc.get('Sí', 0)
 
-# Fila 1 de Métricas Generales
 col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
 col2.metric('Participantes Únicos', f'{total_unicos:,}')
@@ -464,7 +457,6 @@ col3.metric(
     delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
 )
 
-# Fila 2 de Métricas Específicas (Mujeres, Hombres, Con Discapacidad - Sin íconos)
 col_m, col_h, col_d = st.columns(3)
 col_m.metric('Participantes Únicos: Mujeres', f'{total_mujeres:,}')
 col_h.metric('Participantes Únicos: Hombres', f'{total_hombres:,}')
@@ -545,7 +537,7 @@ with g2:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# MAPA INTERACTIVO (CON LISTADO DE CAMPAMENTOS / REFUGIOS)
+# MAPA INTERACTIVO
 # -----------------------------------------------------------------------------
 st.subheader('Mapa de Cobertura por Municipios Atendidos')
 
@@ -603,51 +595,70 @@ st_folium(mapa, width='stretch', height=450)
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# ALCANCE DE LOS INDICADORES
+# ALCANCE Y COMPARACIÓN DE INDICADORES (META VS RESULTADO DEL MES)
 # -----------------------------------------------------------------------------
-st.subheader('Alcance de los Indicadores del Proyecto AICS')
+st.subheader('Alcance de los Indicadores y Actividades del Proyecto AICS')
 
 if len(df_filtered) > 0:
     records_ind = []
     for _, row in df_filtered.iterrows():
-        cod = str(row.get('Indicador', '1.1')).strip()
+        cod = str(row.get('Indicador', '1.1')).strip().lower()
         records_ind.append({
-            'Codigo': cod,
-            'Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador {cod}'),
+            'Codigo': cod.upper(),
+            'Nombre_Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador/Actividad {cod.upper()}'),
             'ID_Unico': row.get('ID_Unico'),
         })
 
     df_ind = pd.DataFrame(records_ind)
     summary_ind = (
-        df_ind.groupby(['Codigo', 'Indicador'])
-        .agg(Alcanzados=('ID_Unico', 'nunique'))
+        df_ind.groupby(['Codigo', 'Nombre_Indicador'])
+        .agg(Resultado_Mes=('ID_Unico', 'nunique'))
         .reset_index()
     )
 
     metas_vals, porcentajes_avance = [], []
     for _, r in summary_ind.iterrows():
-        c = r['Codigo']
+        c = r['Codigo'].lower()
         meta_info = METAS_INDICADORES_AICS.get(c, {'meta': 100, 'tipo': 'numero'})
         meta_val = meta_info['meta']
         metas_vals.append(meta_val)
-        alc = (r['Alcanzados'] / meta_val) * 100 if meta_val > 0 else 0
+        alc = (r['Resultado_Mes'] / meta_val) * 100 if meta_val > 0 else 0
         porcentajes_avance.append(f'{alc:.1f}%')
 
     summary_ind['Meta'] = metas_vals
     summary_ind['% Avance'] = porcentajes_avance
 
-    fig_ind = px.bar(
-        summary_ind,
-        x='Indicador',
-        y='Alcanzados',
-        text='Alcanzados',
-        title='Avance por Indicador de Producto / Resultado',
-        color_discrete_sequence=[COLOR_VERDE_COOPI],
+    # Gráfico de barras agrupadas: Resultado del Mes vs Meta
+    fig_ind = go.Figure()
+    fig_ind.add_trace(go.Bar(
+        x=summary_ind['Nombre_Indicador'],
+        y=summary_ind['Resultado_Mes'],
+        name='Resultado del Mes',
+        text=summary_ind['Resultado_Mes'],
+        textposition='outside',
+        marker_color=COLOR_VERDE_COOPI
+    ))
+    fig_ind.add_trace(go.Bar(
+        x=summary_ind['Nombre_Indicador'],
+        y=summary_ind['Meta'],
+        name='Meta del Proyecto',
+        text=summary_ind['Meta'],
+        textposition='outside',
+        marker_color=COLOR_AZUL_COOPI
+    ))
+
+    fig_ind.update_layout(
+        barmode='group',
+        title='Comparativa: Resultado del Mes vs Meta del Proyecto por Indicador / Actividad',
+        font=font_layout,
+        xaxis_title='Indicador / Actividad',
+        yaxis_title='Cantidad de Personas / Unidades',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
     )
-    fig_ind.update_traces(textposition='outside')
-    fig_ind.update_layout(font=font_layout, xaxis_title='Indicador')
+    
     st.plotly_chart(fig_ind, width='stretch')
 
+    st.markdown('#### Detalle de Avance por Indicador')
     st.dataframe(summary_ind, width='stretch', hide_index=True)
 else:
     st.info(
