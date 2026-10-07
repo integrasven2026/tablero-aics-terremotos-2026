@@ -240,7 +240,6 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # CLASIFICACIÓN ROBUSTA BASADA EN EL USUARIO Y CONTENIDO DE KOBO
         user_kobo = str(row.get('_submitted_by') or row.get('user') or '').lower()
         row_str = str(row).lower()
         case_upper = case_id_alfa.upper()
@@ -436,6 +435,7 @@ def cargar_datos_kobo_api(
                         'Discapacidad': discapacidad,
                         'Indicador': ind_val,
                         'Ponderacion': 1,
+                        'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
                     })
         else:
             id_base = f'ALFA_{case_id_alfa}' if case_id_alfa else f"ROW_{row.get('_id')}"
@@ -455,6 +455,7 @@ def cargar_datos_kobo_api(
                         'Discapacidad': 'No',
                         'Indicador': ind_val,
                         'Ponderacion': hombres_envio,
+                        'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
                     })
                 if mujeres_envio > 0:
                     registros.append({
@@ -471,6 +472,7 @@ def cargar_datos_kobo_api(
                         'Discapacidad': 'No',
                         'Indicador': ind_val,
                         'Ponderacion': mujeres_envio,
+                        'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
                     })
             else:
                 registros.append({
@@ -487,6 +489,7 @@ def cargar_datos_kobo_api(
                     'Discapacidad': 'No',
                     'Indicador': ind_val,
                     'Ponderacion': cantidad_envio,
+                    'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
                 })
 
     df = pd.DataFrame(registros)
@@ -809,7 +812,7 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (BASADO EN EL FORMULARIO DE PROTECCIÓN)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (TOTAL DE CASOS Y CÓDIGOS ÚNICOS)
 # -----------------------------------------------------------------------------
 st.subheader('Capítulo de Servicios de Protección')
 
@@ -817,7 +820,13 @@ if not df_raw.empty and 'Tipo_Servicio_Proteccion' in df_raw.columns:
     df_proteccion = df_raw[df_raw['Tipo_Servicio_Proteccion'] != 'No especificado']
     
     total_casos_proteccion = int(df_proteccion['Ponderacion'].sum()) if not df_proteccion.empty else 0
-    st.metric('Total de Casos de Protección Atendidos', f'{total_casos_proteccion:,}')
+    
+    # Cálculo de participantes únicos (códigos que no se repiten) basados en 'Case_ID'
+    total_codigos_unicos = df_proteccion['Case_ID'].nunique() if not df_proteccion.empty else 0
+
+    col_p1, col_p2 = st.columns(2)
+    col_p1.metric('Total de Casos de Protección Atendidos', f'{total_casos_proteccion:,}')
+    col_p2.metric('Participantes Únicos (Códigos No Repetidos)', f'{total_codigos_unicos:,}')
 
     if not df_proteccion.empty:
         df_servicios_count = (
