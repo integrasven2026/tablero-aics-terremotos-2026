@@ -233,21 +233,21 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Detección de servicios de protección específicos
+        # Detección flexible de servicios de protección específicos
         tipo_servicio_proteccion = 'No especificado'
-        row_str_keys = str(row).lower()
-        
-        # Verificar si hay registros directos de gestor, orientación legal o psicólogo
-        has_gestor = any(('gestor_coopi' in str(k).lower() and str(v).strip() not in ['', 'none', 'nan', '0']) for k, v in row.items())
-        has_legal = any(('orientacion_legal_coopi' in str(k).lower() and str(v).strip() not in ['', 'none', 'nan', '0']) for k, v in row.items())
-        has_psico = any(('psicologo_coopi' in str(k).lower() and str(v).strip() not in ['', 'none', 'nan', '0']) for k, v in row.items())
-
-        if has_gestor or 'gestor_coopi_' in row_str_keys:
-            tipo_servicio_proteccion = '1. Protección General'
-        elif has_legal or 'orientacion_legal_coopi_' in row_str_keys:
-            tipo_servicio_proteccion = '2. Orientación Legal'
-        elif has_psico or 'psicologo_coopi_' in row_str_keys:
-            tipo_servicio_proteccion = '3. APS Psicosocial'
+        for k, v in row.items():
+            k_l = str(k).lower()
+            v_str = str(v).strip().lower()
+            if v_str not in ['', 'none', 'nan', '0', 'false']:
+                if 'gestor_coopi' in k_l:
+                    tipo_servicio_proteccion = '1. Protección General'
+                    break
+                elif 'orientacion_legal_coopi' in k_l:
+                    tipo_servicio_proteccion = '2. Orientación Legal'
+                    break
+                elif 'psicologo_coopi' in k_l:
+                    tipo_servicio_proteccion = '3. APS Psicosocial'
+                    break
 
         sector_raw = str(
             row.get('Resultado:')
@@ -579,47 +579,6 @@ col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (NUEVO)
-# -----------------------------------------------------------------------------
-st.subheader('Capítulo de Servicios de Protección')
-
-if not df_filtered.empty and 'Tipo_Servicio_Proteccion' in df_filtered.columns:
-    df_proteccion = df_filtered[df_filtered['Tipo_Servicio_Proteccion'] != 'No especificado']
-    
-    total_casos_proteccion = int(df_proteccion['Ponderacion'].sum()) if not df_proteccion.empty else 0
-    st.metric('Total de Casos de Protección Atendidos', f'{total_casos_proteccion:,}')
-
-    if not df_proteccion.empty:
-        df_servicios_count = (
-            df_proteccion.groupby('Tipo_Servicio_Proteccion')['Ponderacion']
-            .sum()
-            .reset_index(name='Cantidad_Casos')
-        )
-        
-        fig_prot = px.bar(
-            df_servicios_count,
-            x='Tipo_Servicio_Proteccion',
-            y='Cantidad_Casos',
-            text='Cantidad_Casos',
-            color='Tipo_Servicio_Proteccion',
-            color_discrete_sequence=PALETA_COOPI,
-        )
-        fig_prot.update_traces(textposition='outside')
-        fig_prot.update_layout(
-            showlegend=False,
-            font=font_layout,
-            xaxis_title='Tipo de Servicio de Protección',
-            yaxis_title='Cantidad de Casos',
-        )
-        st.plotly_chart(fig_prot, width='stretch')
-    else:
-        st.info('No hay registros de servicios de protección bajo los filtros actuales.')
-else:
-    st.info('No hay datos disponibles para el capítulo de protección.')
-
-st.markdown('---')
-
-# -----------------------------------------------------------------------------
 # GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS
 # -----------------------------------------------------------------------------
 g1, g2 = st.columns(2)
@@ -835,3 +794,44 @@ else:
         'No hay registros suficientes para calcular los indicadores con los'
         ' filtros actuales.'
     )
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (UBICADO AL FINAL)
+# -----------------------------------------------------------------------------
+st.subheader('Capítulo de Servicios de Protección')
+
+if not df_filtered.empty and 'Tipo_Servicio_Proteccion' in df_filtered.columns:
+    df_proteccion = df_filtered[df_filtered['Tipo_Servicio_Proteccion'] != 'No especificado']
+    
+    total_casos_proteccion = int(df_proteccion['Ponderacion'].sum()) if not df_proteccion.empty else 0
+    st.metric('Total de Casos de Protección Atendidos', f'{total_casos_proteccion:,}')
+
+    if not df_proteccion.empty:
+        df_servicios_count = (
+            df_proteccion.groupby('Tipo_Servicio_Proteccion')['Ponderacion']
+            .sum()
+            .reset_index(name='Cantidad_Casos')
+        )
+        
+        fig_prot = px.bar(
+            df_servicios_count,
+            x='Tipo_Servicio_Proteccion',
+            y='Cantidad_Casos',
+            text='Cantidad_Casos',
+            color='Tipo_Servicio_Proteccion',
+            color_discrete_sequence=PALETA_COOPI,
+        )
+        fig_prot.update_traces(textposition='outside')
+        fig_prot.update_layout(
+            showlegend=False,
+            font=font_layout,
+            xaxis_title='Tipo de Servicio de Protección',
+            yaxis_title='Cantidad de Casos',
+        )
+        st.plotly_chart(fig_prot, width='stretch')
+    else:
+        st.info('No hay registros de servicios de protección bajo los filtros actuales.')
+else:
+    st.info('No hay datos disponibles para el capítulo de protección.')
