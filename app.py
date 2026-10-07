@@ -148,7 +148,7 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
-# MAPEO DE INDICADORES OFICIALES (R1 y R2)
+# MAPEO COMPLETO DE INDICADORES / ACTIVIDADES (INCLUYENDO R1 Y R2)
 MAPA_INDICADORES_AICS = {
     'ob-1': 'OB-1: % Asistencia humanitaria segura y participativa',
     'ob-2': 'OB-2: % Acceso a agua y servicios higiénico-sanitarios',
@@ -158,6 +158,10 @@ MAPA_INDICADORES_AICS = {
     '2.1': 'Indicador 2.1: N.º de niños y niñas con apoyo psicosocial / CFS',
     '2.2': 'Indicador 2.2: % Población con conocimiento de prevención VBG',
     '2.3': 'Indicador 2.3: N.º de personas con medidas de protección y prevención',
+    'r1a4': 'R1A4: Fortalecimiento capacidades (WASH/Dignidad)',
+    'r1a5': 'R1A5: Sesiones informativas y sensibilización',
+    'r2a2': 'R2A2: Gestión de casos y asistencia personalizada',
+    'r2a4': 'R2A4: Sensibilización VBG y protección niñez',
 }
 
 METAS_INDICADORES_AICS = {
@@ -169,6 +173,10 @@ METAS_INDICADORES_AICS = {
     '2.1': {'meta': 1580, 'tipo': 'numero'},
     '2.2': {'meta': 75, 'tipo': 'porcentaje'},
     '2.3': {'meta': 4134, 'tipo': 'numero'},
+    'r1a4': {'meta': 2200, 'tipo': 'numero'},
+    'r1a5': {'meta': 2500, 'tipo': 'numero'},
+    'r2a2': {'meta': 195, 'tipo': 'numero'},
+    'r2a4': {'meta': 1500, 'tipo': 'numero'},
 }
 
 font_layout = dict(family='Quicksand', size=13)
@@ -264,7 +272,9 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
+        # Detección flexible del indicador reportado en Kobo
         ind_val = '1.1'
+        encontrado = False
         for col_i, val_i in row.items():
             col_str_l = str(col_i).lower()
             if ('indicador' in col_str_l or 'actividad' in col_str_l or 'resultado' in col_str_l) and pd.notnull(val_i):
@@ -272,7 +282,10 @@ def cargar_datos_kobo_api(
                 for k_ind in MAPA_INDICADORES_AICS.keys():
                     if k_ind in txt_ind:
                         ind_val = k_ind.lower()
+                        encontrado = True
                         break
+                if encontrado:
+                    break
 
         beneficiarios = row.get('group_beneficiario', [])
         if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
@@ -360,312 +373,3 @@ def cargar_datos_kobo_api(
                 'Discapacidad': 'No',
                 'Indicador': ind_val,
             })
-
-    df = pd.DataFrame(registros)
-    if not df.empty and 'Fecha' in df.columns:
-        df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
-        df['Mes_Reporte'] = df['Fecha_DT'].apply(
-            lambda x: (
-                f'{x.year} - {MESES_ES.get(x.month, "")}'
-                if pd.notnull(x)
-                else 'Sin Fecha'
-            )
-        )
-    else:
-        df['Mes_Reporte'] = 'Sin Fecha'
-    return df
-
-
-# Credenciales Kobo del proyecto AICS
-ASSET_ID_AICS = 'aBiwjqr5xDBwCMy9uTHDac'
-TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
-df_raw = cargar_datos_kobo_api(ASSET_ID_AICS, TOKEN_AICS)
-
-# -----------------------------------------------------------------------------
-# FILTROS LATERALES
-# -----------------------------------------------------------------------------
-st.sidebar.header('Sincronización y Filtros')
-
-if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
-    st.cache_data.clear()
-    st.rerun()
-
-st.sidebar.markdown('---')
-
-if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
-    st.warning(
-        '⚠ No se pudieron cargar datos desde la API de KoboToolbox. Verifica tu'
-        ' token y conexión.'
-    )
-    st.stop()
-
-meses_disp = ['Todos'] + sorted(
-    [m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha']
-)
-mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp)
-
-sectores_disp = ['Todos', 'WASH', 'Protección']
-sector_sel = st.sidebar.selectbox('Sector:', sectores_disp)
-
-sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
-sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp)
-
-rango_disp = ['Todos'] + sorted(df_raw['Rango_Etario'].unique().tolist())
-rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp)
-
-# Aplicar filtros
-df_filtered = df_raw.copy()
-if mes_sel != 'Todos':
-    df_filtered = df_filtered[df_filtered['Mes_Reporte'] == mes_sel]
-if sector_sel != 'Todos':
-    df_filtered = df_filtered[df_filtered['Sector'] == sector_sel]
-if sexo_sel != 'Todos':
-    df_filtered = df_filtered[df_filtered['Sexo'] == sexo_sel]
-if rango_sel != 'Todos':
-    df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
-
-# -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE
-# -----------------------------------------------------------------------------
-total_servicios = len(df_filtered)
-df_unicos = df_filtered.drop_duplicates(subset=['ID_Unico'])
-total_unicos = len(df_unicos)
-pct_meta = (
-    (total_unicos / META_PARTICIPANTES_UNICOS) * 100
-    if META_PARTICIPANTES_UNICOS > 0
-    else 0
-)
-
-conteo_sexo = df_unicos['Sexo'].value_counts() if not df_unicos.empty else pd.Series()
-total_mujeres = conteo_sexo.get('Mujer', 0)
-total_hombres = conteo_sexo.get('Hombre', 0)
-
-conteo_disc = df_unicos['Discapacidad'].value_counts() if not df_unicos.empty else pd.Series()
-total_discapacidad = conteo_disc.get('Sí', 0)
-
-col1, col2, col3 = st.columns(3)
-col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
-col2.metric('Participantes Únicos', f'{total_unicos:,}')
-col3.metric(
-    '% Alcance de la Meta (4.906 pers.)',
-    f'{pct_meta:.2f}%',
-    delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
-)
-
-col_m, col_h, col_d = st.columns(3)
-col_m.metric('Participantes Únicos: Mujeres', f'{total_mujeres:,}')
-col_h.metric('Participantes Únicos: Hombres', f'{total_hombres:,}')
-col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
-
-st.markdown('---')
-
-# -----------------------------------------------------------------------------
-# GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS
-# -----------------------------------------------------------------------------
-g1, g2 = st.columns(2)
-
-with g1:
-    st.subheader('Participantes Únicos por Rango Etario y Sexo')
-    if total_unicos > 0 and 'Rango_Etario' in df_unicos.columns:
-        df_demo = (
-            df_unicos.groupby(['Rango_Etario', 'Sexo'])
-            .size()
-            .reset_index(name='Cantidad')
-        )
-        
-        orden_etario = {
-            '0 A 4 Años': 1,
-            '5 A 17 Años': 2,
-            '18 A 49 Años': 3,
-            '50 Años O Más': 4
-        }
-        df_demo['Orden'] = df_demo['Rango_Etario'].map(orden_etario).fillna(99)
-        df_demo = df_demo.sort_values('Orden')
-
-        fig_demo = px.bar(
-            df_demo,
-            x='Rango_Etario',
-            y='Cantidad',
-            color='Sexo',
-            barmode='group',
-            text='Cantidad',
-            color_discrete_sequence=PALETA_COOPI,
-        )
-        fig_demo.update_traces(textposition='outside')
-        fig_demo.update_layout(
-            showlegend=True,
-            font=font_layout,
-            xaxis_title='Rango Etario',
-            yaxis_title='Cantidad',
-            xaxis={'categoryorder': 'array', 'categoryarray': ['0 A 4 Años', '5 A 17 Años', '18 A 49 Años', '50 Años O Más']}
-        )
-        st.plotly_chart(fig_demo, width='stretch')
-    else:
-        st.info('No hay datos disponibles para los filtros seleccionados.')
-
-with g2:
-    st.subheader('Participantes Únicos por Municipio')
-    if total_unicos > 0 and 'Municipio' in df_unicos.columns:
-        df_muni = (
-            df_unicos.groupby(['Estado', 'Municipio'])
-            .size()
-            .reset_index(name='Cantidad')
-        )
-        df_muni = df_muni.sort_values(by='Cantidad', ascending=True)
-        fig_muni = px.bar(
-            df_muni,
-            y='Municipio',
-            x='Cantidad',
-            color='Estado',
-            orientation='h',
-            text='Cantidad',
-            color_discrete_sequence=PALETA_COOPI,
-        )
-        fig_muni.update_traces(textposition='outside')
-        fig_muni.update_layout(
-            showlegend=True, font=font_layout, yaxis_title='Municipio'
-        )
-        st.plotly_chart(fig_muni, width='stretch')
-    else:
-        st.info('No hay datos disponibles.')
-
-st.markdown('---')
-
-# -----------------------------------------------------------------------------
-# MAPA INTERACTIVO
-# -----------------------------------------------------------------------------
-st.subheader('Mapa de Cobertura por Municipios Atendidos')
-
-mapa = folium.Map(
-    location=[10.40, -66.90], zoom_start=10, tiles='OpenStreetMap'
-)
-
-if total_unicos > 0:
-    muni_resumen = []
-    for (est, mun), grupo in df_unicos.groupby(['Estado', 'Municipio']):
-        tot = len(grupo)
-        campamentos = sorted([c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'])
-        campamentos_str = "<br>".join([f"- {c}" for c in campamentos])
-        if not campamentos_str:
-            campamentos_str = "- No especificado"
-            
-        muni_resumen.append({
-            'Estado': est,
-            'Municipio': mun,
-            'Total_Unicos': tot,
-            'Campamentos': campamentos_str
-        })
-        
-    df_mapa = pd.DataFrame(muni_resumen)
-
-    for _, m_row in df_mapa.iterrows():
-        est = m_row['Estado']
-        mun = m_row['Municipio']
-        tot = m_row['Total_Unicos']
-        camps = m_row['Campamentos']
-        coords = COORDENADAS_MUNICIPIOS.get(mun, [10.5, -66.9])
-
-        popup_html = f"""
-        <div style='font-family: Quicksand; font-size: 13px; width: 220px;'>
-            <h4 style='color: {COLOR_AZUL_COOPI}; margin-bottom: 5px;'>{mun}</h4>
-            <b>Estado:</b> {est}<br>
-            <b>Participantes Únicos:</b> <b>{tot}</b><br>
-            <hr style='margin: 5px 0;'>
-            <b>Campamentos / Refugios:</b><br>
-            {camps}
-        </div>
-        """
-        folium.CircleMarker(
-            location=coords,
-            radius=min(tot * 1.5, 25) + 8,
-            popup=folium.Popup(popup_html, max_width=250),
-            color=COLOR_AZUL_COOPI,
-            fill=True,
-            fill_color=COLOR_AZUL_COOPI,
-            fill_opacity=0.8,
-        ).add_to(mapa)
-
-st_folium(mapa, width='stretch', height=450)
-
-st.markdown('---')
-
-# -----------------------------------------------------------------------------
-# REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES OFICIALES)
-# -----------------------------------------------------------------------------
-st.subheader('Alcance de Indicadores Oficiales (Resultado del Mes vs Meta)')
-
-if len(df_filtered) > 0:
-    records_ind = []
-    for _, row in df_filtered.iterrows():
-        cod = str(row.get('Indicador', '1.1')).strip().lower()
-        records_ind.append({
-            'Codigo': cod,
-            'Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador {cod.upper()}'),
-            'ID_Unico': row.get('ID_Unico'),
-        })
-
-    df_ind = pd.DataFrame(records_ind)
-    summary_ind = (
-        df_ind.groupby(['Codigo', 'Indicador'])
-        .agg(Resultado_Mes=('ID_Unico', 'nunique'))
-        .reset_index()
-    )
-
-    # Asegurar que todos los indicadores oficiales aparezcan en el reporte aunque tengan 0
-    todos_inds = []
-    for k, nombre in MAPA_INDICADORES_AICS.items():
-        match = summary_ind[summary_ind['Codigo'] == k]
-        res_val = int(match['Resultado_Mes'].values[0]) if not match.empty else 0
-        meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
-        alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
-        todos_inds.append({
-            'Codigo': k,
-            'Indicador': nombre,
-            'Resultado_Mes': res_val,
-            'Meta': meta_val,
-            '% Avance': f'{alc:.1f}%'
-        })
-
-    summary_final = pd.DataFrame(todos_inds)
-    summary_final = summary_final.sort_values(by='Codigo', ascending=False)
-
-    # Gráfico de barras horizontal agrupado (Resultado del Mes vs Meta)
-    fig_ind = go.Figure()
-    fig_ind.add_trace(go.Bar(
-        y=summary_final['Indicador'],
-        x=summary_final['Resultado_Mes'],
-        name='Resultado del Mes',
-        orientation='h',
-        text=summary_final['Resultado_Mes'],
-        textposition='outside',
-        marker_color=COLOR_VERDE_COOPI
-    ))
-    fig_ind.add_trace(go.Bar(
-        y=summary_final['Indicador'],
-        x=summary_final['Meta'],
-        name='Meta Oficial',
-        orientation='h',
-        text=summary_final['Meta'],
-        textposition='outside',
-        marker_color=COLOR_AZUL_COOPI
-    ))
-
-    fig_ind.update_layout(
-        barmode='group',
-        title='Comparativa por Indicador Oficial: Resultado del Mes vs Meta (Gráfico Horizontal)',
-        font=font_layout,
-        xaxis_title='Cantidad / Porcentaje',
-        yaxis_title='Indicador',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-        height=550
-    )
-    
-    st.plotly_chart(fig_ind, width='stretch')
-
-    st.markdown('#### Detalle de Avance por Indicador')
-    st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
-else:
-    st.info(
-        'No hay registros suficientes para calcular los indicadores con los'
-        ' filtros actuales.'
-    )
