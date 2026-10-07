@@ -274,11 +274,11 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Extraer cantidad acumulada reportada (num_personas, suma_total, cantidad, etc.)
+        # Captura ultra-flexible de cantidad reportada (busca cualquier campo numérico que contenga "número", "cantidad", "total", "suma", "num_")
         cantidad_envio = 1
         for k, v in row.items():
             k_l = str(k).lower()
-            if any(x in k_l for x in ['num_personas', 'suma_total', 'cantidad', 'tot_pers']):
+            if any(x in k_l for x in ['número', 'numero', 'cantidad', 'suma', 'total', 'num_', 'tot_']):
                 try:
                     val_num = int(float(v))
                     if val_num > 0:
@@ -286,6 +286,13 @@ def cargar_datos_kobo_api(
                         break
                 except Exception:
                     pass
+
+        # Si no se encontró por nombre de clave, buscamos si alguna columna tiene un entero positivo relevante
+        if cantidad_envio == 1:
+            for k, v in row.items():
+                if isinstance(v, (int, float)) and 0 < v < 5000:
+                    cantidad_envio = int(v)
+                    break
 
         # Detección flexible del indicador
         ind_val = '1.1'
@@ -470,7 +477,7 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE (USANDO PONDERACIÓN)
+# MÉTRICAS CLAVE
 # -----------------------------------------------------------------------------
 total_servicios = int(df_filtered['Ponderacion'].sum())
 df_unicos = df_filtered.drop_duplicates(subset=['ID_Unico'])
