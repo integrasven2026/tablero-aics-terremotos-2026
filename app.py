@@ -233,21 +233,18 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Categorización robusta barriendo todas las claves del diccionario en busca de los servicios de protección
+        # BARREADO EXHAUSTIVO DE TODO EL JSON PARA CAPTURAR LOS SERVICIOS DE PROTECCIÓN
         tipo_servicio_proteccion = 'No especificado'
-        for k, v in row.items():
-            k_lower = str(k).lower()
-            v_lower = str(v).lower()
-            
-            if 'orientacion_legal_coopi' in k_lower or 'orientacion_legal' in k_lower or 'orientacion_legal' in v_lower:
-                tipo_servicio_proteccion = '2. Orientación Legal'
-                break
-            elif 'psicologo_coopi' in k_lower or 'psicologa_coopi' in k_lower or 'psicolog' in k_lower or 'psicolog' in v_lower:
-                tipo_servicio_proteccion = '3. APS Psicosocial'
-                break
-            elif 'gestor_coopi' in k_lower or 'gestor' in k_lower or 'gestor' in v_lower:
-                tipo_servicio_proteccion = '1. Protección General'
-                break
+        
+        # Convertimos todo el diccionario row a un texto plano en minúsculas para buscar patrones exactos de tus columnas
+        row_str = str(row).lower()
+        
+        if 'orientacion_legal_coopi' in row_str or 'orientacion_legal' in row_str:
+            tipo_servicio_proteccion = '2. Orientación Legal'
+        elif 'psicologo_coopi' in row_str or 'psicologa_coopi' in row_str or 'psicolog' in row_str:
+            tipo_servicio_proteccion = '3. APS Psicosocial'
+        elif 'gestor_coopi' in row_str or 'gestor' in row_str:
+            tipo_servicio_proteccion = '1. Protección General'
 
         sector_raw = str(
             row.get('Resultado:')
