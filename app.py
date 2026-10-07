@@ -225,7 +225,7 @@ def cargar_datos_kobo_api(
 
     registros = []
     for row in data:
-        # Grupo de metadatos Alfa (Participantes únicos y servicios)
+        # Extracción segura de case_id dentro de group_metadatos_alfa
         meta_alfa = row.get('group_metadatos_alfa', {})
         case_id_alfa = ''
         if isinstance(meta_alfa, dict):
@@ -233,17 +233,16 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # BARREADO EXHAUSTIVO DE TODO EL JSON PARA CAPTURAR LOS SERVICIOS DE PROTECCIÓN
+        # Categorización precisa basada en la nomenclatura del case_id (ej: 2026-VEN-PS07-013-AICS)
         tipo_servicio_proteccion = 'No especificado'
-        
-        # Convertimos todo el diccionario row a un texto plano en minúsculas para buscar patrones exactos de tus columnas
+        case_upper = case_id_alfa.upper()
         row_str = str(row).lower()
-        
-        if 'orientacion_legal_coopi' in row_str or 'orientacion_legal' in row_str:
-            tipo_servicio_proteccion = '2. Orientación Legal'
-        elif 'psicologo_coopi' in row_str or 'psicologa_coopi' in row_str or 'psicolog' in row_str:
+
+        if '-PS' in case_upper or 'PS' in case_upper or 'psicolog' in row_str:
             tipo_servicio_proteccion = '3. APS Psicosocial'
-        elif 'gestor_coopi' in row_str or 'gestor' in row_str:
+        elif '-OL' in case_upper or 'OL' in case_upper or 'orientacion_legal' in row_str or 'abogado' in row_str:
+            tipo_servicio_proteccion = '2. Orientación Legal'
+        elif '-G' in case_upper or 'G' in case_upper or 'gestor' in row_str or case_id_alfa != '':
             tipo_servicio_proteccion = '1. Protección General'
 
         sector_raw = str(
@@ -795,7 +794,7 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (UBICADO AL FINAL Y USANDO BASE COMPLETA)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (UBICADO AL FINAL Y BASADO EN case_id)
 # -----------------------------------------------------------------------------
 st.subheader('Capítulo de Servicios de Protección')
 
