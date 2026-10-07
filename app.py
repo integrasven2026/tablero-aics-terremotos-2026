@@ -314,17 +314,17 @@ def cargar_datos_kobo_api(
                     if encontrado:
                         break
 
-        # Capturar totales específicos de hombres y mujeres si vienen reportados directamente en columnas del envío
+        # Capturar sumas específicas por género si vienen en el envío
         hombres_envio = 0
         mujeres_envio = 0
         for k, v in row.items():
             k_l = str(k).lower()
-            if 'suma_h' in k_l or 'hombre' in k_l or 'masculino' in k_l:
+            if ('suma_h' in k_l or 'hombre' in k_l or 'masculino' in k_l) and 'count_' not in k_l:
                 try:
                     hombres_envio += int(float(v))
                 except Exception:
                     pass
-            elif 'suma_m' in k_l or 'mujer' in k_l or 'femenino' in k_l:
+            elif ('suma_n' in k_l or 'suma_m' in k_l or 'mujer' in k_l or 'femenino' in k_l) and 'count_' not in k_l:
                 try:
                     mujeres_envio += int(float(v))
                 except Exception:
@@ -410,7 +410,6 @@ def cargar_datos_kobo_api(
                         'Ponderacion': 1,
                     })
         else:
-            # Si no hay grupo repetible pero tenemos desglose explícito de Hombres y Mujeres en el envío
             if hombres_envio > 0 or mujeres_envio > 0:
                 if hombres_envio > 0:
                     registros.append({
@@ -422,7 +421,7 @@ def cargar_datos_kobo_api(
                         'Sector': sector,
                         'ID_Unico': f"ROW_{row.get('_id')}_H",
                         'Sexo': 'Hombre',
-                        'Rango_Etario': '18 A 49 Años',
+                        'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
                         'Discapacidad': 'No',
                         'Indicador': ind_val,
                         'Ponderacion': hombres_envio,
@@ -437,7 +436,7 @@ def cargar_datos_kobo_api(
                         'Sector': sector,
                         'ID_Unico': f"ROW_{row.get('_id')}_M",
                         'Sexo': 'Mujer',
-                        'Rango_Etario': '18 A 49 Años',
+                        'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
                         'Discapacidad': 'No',
                         'Indicador': ind_val,
                         'Ponderacion': mujeres_envio,
@@ -452,7 +451,7 @@ def cargar_datos_kobo_api(
                     'Sector': sector,
                     'ID_Unico': f"ROW_{row.get('_id')}_0",
                     'Sexo': 'Mujer',
-                    'Rango_Etario': '18 A 49 Años',
+                    'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
                     'Discapacidad': 'No',
                     'Indicador': ind_val,
                     'Ponderacion': cantidad_envio,
@@ -507,7 +506,7 @@ sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp)
 rango_disp = ['Todos'] + sorted(df_raw['Rango_Etario'].unique().tolist())
 rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp)
 
-# Aplicar filtros
+# Aplicar filtros globales para métricas y gráficos demográficos
 df_filtered = df_raw.copy()
 if mes_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Mes_Reporte'] == mes_sel]
@@ -558,7 +557,7 @@ g1, g2 = st.columns(2)
 
 with g1:
     st.subheader('Participantes Únicos por Rango Etario y Sexo')
-    if total_unicos > 0 and 'Rango_Etario' in df_unicos.columns:
+    if not df_unicos.empty and 'Rango_Etario' in df_unicos.columns:
         df_demo = (
             df_unicos.groupby(['Rango_Etario', 'Sexo'])['Ponderacion']
             .sum()
@@ -597,7 +596,7 @@ with g1:
 
 with g2:
     st.subheader('Participantes Únicos por Municipio')
-    if total_unicos > 0 and 'Municipio' in df_unicos.columns:
+    if not df_unicos.empty and 'Municipio' in df_unicos.columns:
         df_muni = (
             df_unicos.groupby(['Estado', 'Municipio'])['Ponderacion']
             .sum()
@@ -632,7 +631,7 @@ mapa = folium.Map(
     location=[10.40, -66.90], zoom_start=10, tiles='OpenStreetMap'
 )
 
-if total_unicos > 0:
+if not df_unicos.empty:
     muni_resumen = []
     for (est, mun), grupo in df_unicos.groupby(['Estado', 'Municipio']):
         tot = int(grupo['Ponderacion'].sum())
@@ -683,12 +682,22 @@ st.markdown('---')
 
 # -----------------------------------------------------------------------------
 # REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES Y ACTIVIDADES)
+# Nota: Para el gráfico de indicadores usamos el dataframe filtrado por mes y rango etario, 
+# permitiendo que el filtro de sexo actúe correctamente sobre las cantidades ponderadas.
 # -----------------------------------------------------------------------------
 st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
 
-if len(df_filtered) > 0:
+df_ind_base = df_raw.copy()
+if mes_sel != 'Todos':
+    df_ind_base = df_ind_base[df_ind_base['Mes_Reporte'] == mes_sel]
+if sexo_sel != 'Todos':
+    df_ind_base = df_ind_base[df_ind_base['Sexo'] == sexo_sel]
+if rango_sel != 'Todos':
+    df_ind_base = df_ind_base[df_ind_base['Rango_Etario'] == rango_sel]
+
+if len(df_ind_base) > 0:
     records_ind = []
-    for _, row in df_filtered.iterrows():
+    for _, row in df_ind_base.iterrows():
         cod = str(row.get('Indicador', '1.1')).strip().lower()
         records_ind.append({
             'Codigo': cod,
