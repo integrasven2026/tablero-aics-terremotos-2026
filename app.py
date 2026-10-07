@@ -148,36 +148,27 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
-# MAPEO DE INDICADORES / ACTIVIDADES Y SUS RESULTADOS (R1 y R2)
+# MAPEO DE INDICADORES OFICIALES (R1 y R2)
 MAPA_INDICADORES_AICS = {
-    '1.1': '1.1 N.º de personas con acceso a artículos esenciales de higiene',
-    '1.2': '1.2 N.º de personas con acceso a agua potable (15L/día)',
-    '1.3': '1.3 % personas con discapacidad con acceso a WASH adaptadas',
-    '2.1': '2.1 N.º de niños y niñas que reciben apoyo psicosocial / CFS',
-    '2.2': '2.2 % población con conocimiento de prevención y respuesta a VBG',
-    '2.3': '2.3 N.º de personas beneficiadas con medidas de protección',
-    'r1a4': 'R1A4: Fortalecimiento capacidades (WASH/Dignidad)',
-    'r1a5': 'R1A5: Sesiones informativas y sensibilización',
-    'r2a2': 'R2A2: Gestión de casos y asistencia personalizada',
-    'r2a4': 'R2A4: Sensibilización VBG y protección niñez',
+    'ob-1': 'OB-1: % Asistencia humanitaria segura y participativa',
+    'ob-2': 'OB-2: % Acceso a agua y servicios higiénico-sanitarios',
+    '1.1': 'Indicador 1.1: N.º de personas con artículos esenciales de higiene',
+    '1.2': 'Indicador 1.2: N.º de personas con acceso a agua potable (15L/día)',
+    '1.3': 'Indicador 1.3: % Personas con discapacidad con WASH adaptadas',
+    '2.1': 'Indicador 2.1: N.º de niños y niñas con apoyo psicosocial / CFS',
+    '2.2': 'Indicador 2.2: % Población con conocimiento de prevención VBG',
+    '2.3': 'Indicador 2.3: N.º de personas con medidas de protección y prevención',
 }
 
-MAPA_RESULTADOS = {
-    '1.1': 'Resultado 1 (WASH)',
-    '1.2': 'Resultado 1 (WASH)',
-    '1.3': 'Resultado 1 (WASH)',
-    'r1a4': 'Resultado 1 (WASH)',
-    'r1a5': 'Resultado 1 (WASH)',
-    '2.1': 'Resultado 2 (Protección)',
-    '2.2': 'Resultado 2 (Protección)',
-    '2.3': 'Resultado 2 (Protección)',
-    'r2a2': 'Resultado 2 (Protección)',
-    'r2a4': 'Resultado 2 (Protección)',
-}
-
-METAS_RESULTADOS = {
-    'Resultado 1 (WASH)': 4800,
-    'Resultado 2 (Protección)': 4134,
+METAS_INDICADORES_AICS = {
+    'ob-1': {'meta': 85, 'tipo': 'porcentaje'},
+    'ob-2': {'meta': 85, 'tipo': 'porcentaje'},
+    '1.1': {'meta': 4800, 'tipo': 'numero'},
+    '1.2': {'meta': 2000, 'tipo': 'numero'},
+    '1.3': {'meta': 100, 'tipo': 'porcentaje'},
+    '2.1': {'meta': 1580, 'tipo': 'numero'},
+    '2.2': {'meta': 75, 'tipo': 'porcentaje'},
+    '2.3': {'meta': 4134, 'tipo': 'numero'},
 }
 
 font_layout = dict(family='Quicksand', size=13)
@@ -599,73 +590,82 @@ st_folium(mapa, width='stretch', height=450)
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# REPORTE Y COMPARATIVA POR RESULTADOS (R1 Y R2)
+# REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES OFICIALES)
 # -----------------------------------------------------------------------------
-st.subheader('Avance Global por Resultados del Proyecto (Resultado 1 vs Resultado 2)')
+st.subheader('Alcance de Indicadores Oficiales (Resultado del Mes vs Meta)')
 
 if len(df_filtered) > 0:
-    records_res = []
+    records_ind = []
     for _, row in df_filtered.iterrows():
         cod = str(row.get('Indicador', '1.1')).strip().lower()
-        resultado_asociado = MAPA_RESULTADOS.get(cod, 'Resultado 1 (WASH)')
-        records_res.append({
-            'Resultado': resultado_asociado,
+        records_ind.append({
+            'Codigo': cod,
+            'Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador {cod.upper()}'),
             'ID_Unico': row.get('ID_Unico'),
         })
 
-    df_res = pd.DataFrame(records_res)
-    summary_res = (
-        df_res.groupby('Resultado')
+    df_ind = pd.DataFrame(records_ind)
+    summary_ind = (
+        df_ind.groupby(['Codigo', 'Indicador'])
         .agg(Resultado_Mes=('ID_Unico', 'nunique'))
         .reset_index()
     )
 
-    # Asignar metas globales por Resultado
-    metas_vals, porcentajes_avance = [], []
-    for _, r in summary_res.iterrows():
-        res_nombre = r['Resultado']
-        meta_val = METAS_RESULTADOS.get(res_nombre, 4000)
-        metas_vals.append(meta_val)
-        alc = (r['Resultado_Mes'] / meta_val) * 100 if meta_val > 0 else 0
-        porcentajes_avance.append(f'{alc:.1f}%')
+    # Asegurar que todos los indicadores oficiales aparezcan en el reporte aunque tengan 0
+    todos_inds = []
+    for k, nombre in MAPA_INDICADORES_AICS.items():
+        match = summary_ind[summary_ind['Codigo'] == k]
+        res_val = int(match['Resultado_Mes'].values[0]) if not match.empty else 0
+        meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
+        alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
+        todos_inds.append({
+            'Codigo': k,
+            'Indicador': nombre,
+            'Resultado_Mes': res_val,
+            'Meta': meta_val,
+            '% Avance': f'{alc:.1f}%'
+        })
 
-    summary_res['Meta_Global'] = metas_vals
-    summary_res['% Avance'] = porcentajes_avance
+    summary_final = pd.DataFrame(todos_inds)
+    summary_final = summary_final.sort_values(by='Codigo', ascending=False)
 
-    # Gráfico de barras agrupadas: Resultado del Mes vs Meta por Resultado (R1 y R2)
-    fig_res = go.Figure()
-    fig_res.add_trace(go.Bar(
-        x=summary_res['Resultado'],
-        y=summary_res['Resultado_Mes'],
-        name='Resultado del Mes (Únicos)',
-        text=summary_res['Resultado_Mes'],
+    # Gráfico de barras horizontal agrupado (Resultado del Mes vs Meta)
+    fig_ind = go.Figure()
+    fig_ind.add_trace(go.Bar(
+        y=summary_final['Indicador'],
+        x=summary_final['Resultado_Mes'],
+        name='Resultado del Mes',
+        orientation='h',
+        text=summary_final['Resultado_Mes'],
         textposition='outside',
         marker_color=COLOR_VERDE_COOPI
     ))
-    fig_res.add_trace(go.Bar(
-        x=summary_res['Resultado'],
-        y=summary_res['Meta_Global'],
-        name='Meta Global del Resultado',
-        text=summary_res['Meta_Global'],
+    fig_ind.add_trace(go.Bar(
+        y=summary_final['Indicador'],
+        x=summary_final['Meta'],
+        name='Meta Oficial',
+        orientation='h',
+        text=summary_final['Meta'],
         textposition='outside',
         marker_color=COLOR_AZUL_COOPI
     ))
 
-    fig_res.update_layout(
+    fig_ind.update_layout(
         barmode='group',
-        title='Comparativa de Avance: Resultado del Mes vs Meta Global (R1 y R2)',
+        title='Comparativa por Indicador Oficial: Resultado del Mes vs Meta (Gráfico Horizontal)',
         font=font_layout,
-        xaxis_title='Resultado del Proyecto',
-        yaxis_title='Cantidad de Participantes Únicos',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+        xaxis_title='Cantidad / Porcentaje',
+        yaxis_title='Indicador',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        height=550
     )
     
-    st.plotly_chart(fig_res, width='stretch')
+    st.plotly_chart(fig_ind, width='stretch')
 
-    st.markdown('#### Resumen Consolidado por Resultados')
-    st.dataframe(summary_res, width='stretch', hide_index=True)
+    st.markdown('#### Detalle de Avance por Indicador')
+    st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
 else:
     st.info(
-        'No hay registros suficientes para calcular el avance por resultados con los'
+        'No hay registros suficientes para calcular los indicadores con los'
         ' filtros actuales.'
     )
