@@ -232,16 +232,17 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Clasificación exacta basada en el case_id del formulario de protección
-        case_upper = case_id_alfa.upper()
+        # CLASIFICACIÓN ROBUSTA BASADA EN EL USUARIO Y CONTENIDO DE KOBO
+        user_kobo = str(row.get('_submitted_by') or row.get('user') or '').lower()
         row_str = str(row).lower()
+        case_upper = case_id_alfa.upper()
 
         tipo_servicio_proteccion = 'No especificado'
-        if '-PS' in case_upper or 'PS' in case_upper or 'psicolog' in row_str:
-            tipo_servicio_proteccion = '3. APS Psicosocial'
-        elif '-OL' in case_upper or 'OL' in case_upper or 'orientacion_legal' in row_str or 'abogado' in row_str:
+        if 'orientacion_legal' in user_kobo or '-OL' in case_upper or 'orientacion_legal' in row_str or 'abogado' in row_str:
             tipo_servicio_proteccion = '2. Orientación Legal'
-        elif asset_id == 'aD96E3u2eqQUSUTW2EBHjx' or '-G' in case_upper or 'G' in case_upper or 'gestor' in row_str:
+        elif 'psicolog' in user_kobo or '-PS' in case_upper or 'psicolog' in row_str or 'aps' in row_str:
+            tipo_servicio_proteccion = '3. APS Psicosocial'
+        elif asset_id == 'aD96E3u2eqQUSUTW2EBHjx' or 'gestor' in user_kobo or '-G' in case_upper or 'gestor' in row_str:
             tipo_servicio_proteccion = '1. Protección General'
 
         sector_raw = str(
