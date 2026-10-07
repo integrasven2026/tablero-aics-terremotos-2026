@@ -274,11 +274,11 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
-        # Captura ultra-flexible de cantidad reportada (busca cualquier campo numérico que contenga "número", "cantidad", "total", "suma", "num_")
+        # Captura exacta de la cantidad reportada en el campo numérico del formulario Kobo
         cantidad_envio = 1
         for k, v in row.items():
             k_l = str(k).lower()
-            if any(x in k_l for x in ['número', 'numero', 'cantidad', 'suma', 'total', 'num_', 'tot_']):
+            if any(x in k_l for x in ['escriba el número', 'número de', 'numero de', 'num_personas', 'suma_total', 'cantidad', 'tot_pers']):
                 try:
                     val_num = int(float(v))
                     if val_num > 0:
@@ -286,13 +286,6 @@ def cargar_datos_kobo_api(
                         break
                 except Exception:
                     pass
-
-        # Si no se encontró por nombre de clave, buscamos si alguna columna tiene un entero positivo relevante
-        if cantidad_envio == 1:
-            for k, v in row.items():
-                if isinstance(v, (int, float)) and 0 < v < 5000:
-                    cantidad_envio = int(v)
-                    break
 
         # Detección flexible del indicador
         ind_val = '1.1'
