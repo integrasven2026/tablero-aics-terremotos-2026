@@ -205,7 +205,7 @@ def normalizar_discapacidad(valor):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE LAS DOS APIS DE KOBOTOOLBOX
+# 2. CARGA DE DATOS CON PAGINACIÓN COMPLETA DESDE LA API DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -213,18 +213,26 @@ def cargar_datos_kobo_api(
 ):
     headers = {'Authorization': f'Token {token}'}
     url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
+    
+    todos_los_resultados = []
     try:
-        response = requests.get(url, headers=headers, timeout=15)
-        if response.status_code != 200:
-            return pd.DataFrame()
-        data = response.json().get('results', [])
-        if not data:
-            return pd.DataFrame()
+        while url:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code != 200:
+                break
+            res_json = response.json()
+            data = res_json.get('results', [])
+            if data:
+                todos_los_resultados.extend(data)
+            url = res_json.get('next', None)
     except Exception:
+        pass
+
+    if not todos_los_resultados:
         return pd.DataFrame()
 
     registros = []
-    for row in data:
+    for row in todos_los_resultados:
         meta_alfa = row.get('group_metadatos_alfa', {})
         case_id_alfa = ''
         if isinstance(meta_alfa, dict):
@@ -501,7 +509,7 @@ TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
 ASSET_ID_WASH = 'aBiwjqr5xDBwCMy9uTHDac'
 ASSET_ID_PROTECCION = 'aD96E3u2eqQUSUTW2EBHjx'
 
-# Carga paralela de ambos formularios
+# Carga paralela de ambos formularios con paginación completa
 df_wash = cargar_datos_kobo_api(ASSET_ID_WASH, TOKEN_AICS)
 df_prot_kobo = cargar_datos_kobo_api(ASSET_ID_PROTECCION, TOKEN_AICS)
 
