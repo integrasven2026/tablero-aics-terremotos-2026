@@ -274,10 +274,11 @@ def cargar_datos_kobo_api(
             or row.get('_submission_time')
         )
 
+        # Capturar la cantidad exacta reportada en el formulario (ej. 18, 11, 17, 7, 16)
         cantidad_envio = 1
         for k, v in row.items():
             k_l = str(k).lower()
-            if any(x in k_l for x in ['escriba el número', 'número de', 'numero de', 'num_personas', 'suma_total', 'cantidad', 'tot_pers']):
+            if any(x in k_l for x in ['escriba el número', 'número de', 'numero de', 'num_personas', 'suma_total', 'cantidad', 'tot_pers', 'suma_n']):
                 try:
                     val_num = int(float(v))
                     if val_num > 0:
@@ -314,148 +315,21 @@ def cargar_datos_kobo_api(
                     if encontrado:
                         break
 
-        # Capturar sumas específicas por género si vienen en el envío
-        hombres_envio = 0
-        mujeres_envio = 0
-        for k, v in row.items():
-            k_l = str(k).lower()
-            if ('suma_h' in k_l or 'hombre' in k_l or 'masculino' in k_l) and 'count_' not in k_l:
-                try:
-                    hombres_envio += int(float(v))
-                except Exception:
-                    pass
-            elif ('suma_n' in k_l or 'suma_m' in k_l or 'mujer' in k_l or 'femenino' in k_l) and 'count_' not in k_l:
-                try:
-                    mujeres_envio += int(float(v))
-                except Exception:
-                    pass
-
-        beneficiarios = row.get('group_beneficiario', [])
-        if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
-            for idx, b in enumerate(beneficiarios):
-                if not isinstance(b, dict):
-                    continue
-                cid = ''
-                sexo_val = ''
-                rango_val = ''
-                disc_val = 'No'
-
-                for k, v in b.items():
-                    if not isinstance(v, (str, int, float, bool)) or v is None:
-                        continue
-                    k_str = str(k)
-                    k_lower = k_str.lower()
-                    if 'codigoid' in k_lower or 'documento' in k_lower:
-                        cid = str(v).strip()
-                    elif k_lower == 'sexo' or k_lower.endswith('/sexo'):
-                        sexo_val = str(v).strip()
-                    elif k_lower == 'rango_etario' or k_lower.endswith('/rango_etario') or 'resul_edad' in k_lower:
-                        rango_val = str(v).strip()
-                    elif ('discapacidad' in k_lower or k_lower.endswith('persona_con_discapacidad')) and 'count_' not in k_lower:
-                        disc_val = str(v).strip()
-
-                if not sexo_val:
-                    for k, v in b.items():
-                        if isinstance(v, (str, int, float, bool)) and v is not None:
-                            k_l = str(k).lower()
-                            if 'sexo' in k_l and 'id_' not in k_l and 'count_' not in k_l:
-                                sexo_val = str(v).strip()
-                                break
-                if not rango_val:
-                    for k, v in b.items():
-                        if isinstance(v, (str, int, float, bool)) and v is not None:
-                            k_l = str(k).lower()
-                            if ('rango_etario' in k_l or 'edad' in k_l) and 'count_' not in k_l:
-                                rango_val = str(v).strip()
-                                break
-
-                lista_sexos = [s.strip() for s in sexo_val.split(',') if s.strip()]
-                lista_rangos = [r.strip() for r in rango_val.split(',') if r.strip()]
-                max_len = max(len(lista_sexos), len(lista_rangos), 1)
-
-                for sub_i in range(max_len):
-                    s_item = (
-                        lista_sexos[sub_i]
-                        if sub_i < len(lista_sexos)
-                        else (lista_sexos[0] if lista_sexos else 'Mujer')
-                    )
-                    r_item = (
-                        lista_rangos[sub_i]
-                        if sub_i < len(lista_rangos)
-                        else (lista_rangos[0] if lista_rangos else '18 A 49 Años')
-                    )
-
-                    id_unico = (
-                        f'ID_{cid}_{sub_i}'
-                        if cid and cid.lower() not in ['none', '', '0', 'nan']
-                        else f"ROW_{row.get('_id')}_{idx}_{sub_i}"
-                    )
-
-                    sexo = normalizar_sexo(s_item)
-                    rango_etario = limpiar_texto(r_item)
-                    discapacidad = normalizar_discapacidad(disc_val)
-
-                    registros.append({
-                        '_id': row.get('_id'),
-                        'Fecha': fecha,
-                        'Estado': estado,
-                        'Municipio': muni,
-                        'Campamento': campamento,
-                        'Sector': sector,
-                        'ID_Unico': id_unico,
-                        'Sexo': sexo,
-                        'Rango_Etario': rango_etario,
-                        'Discapacidad': discapacidad,
-                        'Indicador': ind_val,
-                        'Ponderacion': 1,
-                    })
-        else:
-            if hombres_envio > 0 or mujeres_envio > 0:
-                if hombres_envio > 0:
-                    registros.append({
-                        '_id': row.get('_id'),
-                        'Fecha': fecha,
-                        'Estado': estado,
-                        'Municipio': muni,
-                        'Campamento': campamento,
-                        'Sector': sector,
-                        'ID_Unico': f"ROW_{row.get('_id')}_H",
-                        'Sexo': 'Hombre',
-                        'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
-                        'Discapacidad': 'No',
-                        'Indicador': ind_val,
-                        'Ponderacion': hombres_envio,
-                    })
-                if mujeres_envio > 0:
-                    registros.append({
-                        '_id': row.get('_id'),
-                        'Fecha': fecha,
-                        'Estado': estado,
-                        'Municipio': muni,
-                        'Campamento': campamento,
-                        'Sector': sector,
-                        'ID_Unico': f"ROW_{row.get('_id')}_M",
-                        'Sexo': 'Mujer',
-                        'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
-                        'Discapacidad': 'No',
-                        'Indicador': ind_val,
-                        'Ponderacion': mujeres_envio,
-                    })
-            else:
-                registros.append({
-                    '_id': row.get('_id'),
-                    'Fecha': fecha,
-                    'Estado': estado,
-                    'Municipio': muni,
-                    'Campamento': campamento,
-                    'Sector': sector,
-                    'ID_Unico': f"ROW_{row.get('_id')}_0",
-                    'Sexo': 'Mujer',
-                    'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
-                    'Discapacidad': 'No',
-                    'Indicador': ind_val,
-                    'Ponderacion': cantidad_envio,
-                })
+        # Forzar que la ponderación sea exactamente la cantidad reportada en el envío principal
+        registros.append({
+            '_id': row.get('_id'),
+            'Fecha': fecha,
+            'Estado': estado,
+            'Municipio': muni,
+            'Campamento': campamento,
+            'Sector': sector,
+            'ID_Unico': f"ROW_{row.get('_id')}",
+            'Sexo': 'Mujer',
+            'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
+            'Discapacidad': 'No',
+            'Indicador': ind_val,
+            'Ponderacion': cantidad_envio,
+        })
 
     df = pd.DataFrame(registros)
     if not df.empty and 'Fecha' in df.columns:
@@ -506,7 +380,7 @@ sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp)
 rango_disp = ['Todos'] + sorted(df_raw['Rango_Etario'].unique().tolist())
 rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp)
 
-# Aplicar filtros globales para métricas y gráficos demográficos
+# Aplicar filtros
 df_filtered = df_raw.copy()
 if mes_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Mes_Reporte'] == mes_sel]
@@ -682,8 +556,6 @@ st.markdown('---')
 
 # -----------------------------------------------------------------------------
 # REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES Y ACTIVIDADES)
-# Nota: Para el gráfico de indicadores usamos el dataframe filtrado por mes y rango etario, 
-# permitiendo que el filtro de sexo actúe correctamente sobre las cantidades ponderadas.
 # -----------------------------------------------------------------------------
 st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
 
