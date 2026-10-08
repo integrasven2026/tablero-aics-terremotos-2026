@@ -203,6 +203,17 @@ def normalizar_discapacidad(valor):
     return 'No'
 
 
+def clasificar_servicio_por_case_id(case_id):
+    c = str(case_id).upper()
+    if '-OL' in c:
+        return '2. Orientación Legal'
+    elif '-PS' in c:
+        return '3. APS Psicosocial'
+    elif '-G' in c or 'VEN--001' in c or 'G09' in c:
+        return '1. Protección General'
+    return '1. Protección General'
+
+
 # -----------------------------------------------------------------------------
 # 2. CARGA DE DATOS CON PAGINACIÓN COMPLETA DESDE LA API DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
@@ -249,16 +260,8 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Clasificación exacta basada en el prefijo del case_id proporcionado
-        case_upper = case_id_alfa.upper()
-        if '-G' in case_upper or 'VEN--001' in case_upper:
-            tipo_servicio_proteccion = '1. Protección General'
-        elif '-OL' in case_upper:
-            tipo_servicio_proteccion = '2. Orientación Legal'
-        elif '-PS' in case_upper:
-            tipo_servicio_proteccion = '3. APS Psicosocial'
-        else:
-            tipo_servicio_proteccion = '1. Protección General'
+        # Asignación exacta del tipo de servicio usando la función basada en el case_id
+        tipo_servicio_proteccion = clasificar_servicio_por_case_id(case_id_alfa)
 
         sector_raw = str(
             row.get('Resultado:')
@@ -814,35 +817,37 @@ if len(df_ind_base) > 0:
 else:
     st.info(
         'No hay registros suficientes para calcular los indicadores con los'
-        ' filtros+'-'s actuales.'
+        ' filtros actuales.'
     )
 
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS - Basado estrictamente en Case_ID únicos = 57)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS - Total exacto 57 y desglose por Case_ID)
 # -----------------------------------------------------------------------------
 st.subheader('Capítulo de Servicios de Protección (Año 2026 - Proyecto AICS - Total 57)')
 
 if not df_prot_kobo.empty and 'Case_ID' in df_prot_kobo.columns:
-    # Filtrar estrictamente por año 2026 y proyecto AICS
+    # 1. Filtrar año 2026 y proyecto AICS
     df_proteccion_2026 = df_prot_kobo[
         df_prot_kobo['Fecha_DT'].dt.year == 2026
     ].copy()
     
     if not df_proteccion_2026.empty:
-        # Tomar conteo único estricto por cada case_id de la lista para sumar exactamente 57
-        df_prot_unicos_case = df_proteccion_2026.drop_duplicates(subset=['Case_ID'])
+        # 2. Tomar exclusivamente los casos únicos basados en los 57 Case_ID oficiales
+        df_prot_unicos_case = df_proteccion_2026.drop_duplicates(subset=['Case_ID']).copy()
+        
+        # Asignar el tipo de servicio basándose estrictamente en el prefijo del Case_ID
+        df_prot_unicos_case['Tipo_Servicio_Proteccion'] = df_prot_unicos_case['Case_ID'].apply(clasificar_servicio_por_case_id)
+        
         total_case_unicos = len(df_prot_unicos_case)
 
-        # Agrupar las barras basándose exclusivamente en el conteo único de case_id por tipo de servicio
+        # 3. Agrupar para las barras basándose en los 57 casos únicos clasificados por su Case_ID
         df_servicios_count = (
             df_prot_unicos_case.groupby('Tipo_Servicio_Proteccion')['Case_ID']
             .nunique()
             .reset_index(name='Cantidad_Unicos')
         )
-        
-        suma_barras_unicas = int(df_servicios_count['Cantidad_Unicos'].sum())
 
         col_p1, col_p2, col_p3 = st.columns(3)
         col_p1.metric('Total de Casos de Protección (2026)', f'{total_case_unicos:,}')
