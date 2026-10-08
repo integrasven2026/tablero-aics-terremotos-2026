@@ -260,7 +260,6 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Asignación exacta del tipo de servicio usando la función basada en el case_id
         tipo_servicio_proteccion = clasificar_servicio_por_case_id(case_id_alfa)
 
         sector_raw = str(
