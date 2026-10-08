@@ -159,7 +159,7 @@ MAPA_INDICADORES_AICS = {
     'r1a4': 'R1A4: Fortalecimiento capacidades (WASH/Dignidad)',
     'r1a5': 'R1A5: Sesiones informativas y sensibilización',
     'r2a2': 'R2A2: Gestión de casos y asistencia personalizada',
-    'r2a4': 'R2A4: Sensibilización VBG y protección niñez',
+    'r2a4': 'R2A4: Sesión VBG y protección niñez',
 }
 
 METAS_INDICADORES_AICS = {
@@ -202,13 +202,13 @@ def normalizar_discapacidad(valor):
     return 'No'
 
 
-def clasificar_servicio_por_case_id(case_id):
-    c = str(case_id).upper()
-    if '-OL' in c:
+def clasificar_servicio_por_usuario(val):
+    s = str(val).lower().strip()
+    if 'orientacion_legal' in s or 'abogado' in s:
         return 'Orientación Legal'
-    elif '-PS' in c:
+    elif 'psicologo' in s or 'psico' in s:
         return 'APS Psicosocial'
-    elif '-G' in c or 'VEN--001' in c or 'G09' in c:
+    elif 'gestor' in s:
         return 'Gestoría de Caso'
     return 'Gestoría de Caso'
 
@@ -259,7 +259,17 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        tipo_servicio_proteccion = clasificar_servicio_por_case_id(case_id_alfa)
+        # Extraer variable de usuario para clasificación de protección
+        usuario_val = ''
+        for k, v in row.items():
+            k_l = str(k).lower()
+            if 'group_intro_prof' in k_l and 'user' in k_l:
+                usuario_val = str(v)
+                break
+        if not usuario_val:
+            usuario_val = str(row.get('group_intro_Prof / user', ''))
+
+        tipo_servicio_proteccion = clasificar_servicio_por_usuario(usuario_val)
 
         sector_raw = str(
             row.get('Resultado:')
@@ -593,25 +603,251 @@ col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: RESULTADO DE PROTECCIÓN (Año 2026, 64 Casos y Desglose de Servicios)
+# GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS
+# -----------------------------------------------------------------------------
+g1, g2 = st.columns(2)
+
+with g1:
+    st.subheader('Participantes Únicos por Rango Etario y Sexo')
+    if not df_unicos.empty and 'Rango_Etario' in df_unicos.columns:
+        df_demo = (
+            df_unicos.groupby(['Rango_Etario', 'Sexo'])['Ponderacion']
+            .sum()
+            .reset_index(name='Cantidad')
+        )
+        
+        orden_etario = {
+            '0 A 4 Años': 1,
+            '5 A 17 Años': 2,
+            '18 A 49 Años': 3,
+            '50 Años O Más': 4
+        }
+        df_demo['Orden'] = df_demo['Rango_Etario'].map(orden_etario).fillna(99)
+        df_demo = df_demo.sort_values('Orden')
+
+        fig_demo = px.bar(
+            df_demo,
+            x='Rango_Etario',
+            y='Cantidad',
+            color='Sexo',
+            barmode='group',
+            text='Cantidad',
+            color_discrete_sequence=PALETA_COOPI,
+        )
+        fig_demo.update_traces(textposition='outside')
+        fig_demo.update_layout(
+            showlegend=True,
+            font=font_layout,
+            xaxis_title='Rango Etario',
+            yaxis_title='Cantidad',
+            xaxis={'categoryorder': 'array', 'categoryarray': ['0 A 4 Años', '5 A 17 Años', '18 A 49 Años', '50 Años O Más']}
+        )
+        st.plotly_chart(fig_demo, width='stretch')
+    else:
+        st.info('No hay datos disponibles para los filtros seleccionados.')
+
+with g2:
+    st.subheader('Participantes Únicos por Municipio')
+    if not df_unicos.empty and 'Municipio' in df_unicos.columns:
+        df_muni = (
+            df_unicos.groupby(['Estado', 'Municipio'])['Ponderacion']
+            .sum()
+            .reset_index(name='Cantidad')
+        )
+        df_muni = df_muni.sort_values(by='Cantidad', ascending=True)
+        fig_muni = px.bar(
+            df_muni,
+            y='Municipio',
+            x='Cantidad',
+            color='Estado',
+            orientation='h',
+            text='Cantidad',
+            color_discrete_sequence=PALETA_COOPI,
+        )
+        fig_muni.update_traces(textposition='outside')
+        fig_muni.update_layout(
+            showlegend=True, font=font_layout, yaxis_title='Municipio'
+        )
+        st.plotly_chart(fig_muni, width='stretch')
+    else:
+        st.info('No hay datos disponibles.')
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# MAPA INTERACTIVO
+# -----------------------------------------------------------------------------
+st.subheader('Mapa de Cobertura por Municipios Atendidos')
+
+mapa = folium.Map(
+    location=[10.40, -66.90], zoom_start=10, tiles='OpenStreetMap'
+)
+
+if not df_unicos.empty:
+    muni_resumen = []
+    for (est, mun), grupo in df_unicos.groupby(['Estado', 'Municipio']):
+        tot = int(grupo['Ponderacion'].sum())
+        campamentos = sorted([c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'])
+        campamentos_str = "<br>".join([f"- {c}" for c in campamentos])
+        if not campamentos_str:
+            campamentos_str = "- No especificado"
+            
+        muni_resumen.append({
+            'Estado': est,
+            'Municipio': mun,
+            'Total_Unicos': tot,
+            'Campamentos': campamentos_str
+        })
+        
+    df_mapa = pd.DataFrame(muni_resumen)
+
+    for _, m_row in df_mapa.iterrows():
+        est = m_row['Estado']
+        mun = m_row['Municipio']
+        tot = m_row['Total_Unicos']
+        camps = m_row['Campamentos']
+        coords = COORDENADAS_MUNICIPIOS.get(mun, [10.5, -66.9])
+
+        popup_html = f"""
+        <div style='font-family: Quicksand; font-size: 13px; width: 220px;'>
+            <h4 style='color: {COLOR_AZUL_COOPI}; margin-bottom: 5px;'>{mun}</h4>
+            <b>Estado:</b> {est}<br>
+            <b>Participantes Únicos:</b> <b>{tot}</b><br>
+            <hr style='margin: 5px 0;'>
+            <b>Campamentos / Refugios:</b><br>
+            {camps}
+        </div>
+        """
+        folium.CircleMarker(
+            location=coords,
+            radius=min(tot * 1.5, 25) + 8,
+            popup=folium.Popup(popup_html, max_width=250),
+            color=COLOR_AZUL_COOPI,
+            fill=True,
+            fill_color=COLOR_AZUL_COOPI,
+            fill_opacity=0.8,
+        ).add_to(mapa)
+
+st_folium(mapa, width='stretch', height=450)
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES Y ACTIVIDADES)
+# -----------------------------------------------------------------------------
+st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
+
+df_ind_base = df_raw.copy()
+if mes_sel != 'Todos':
+    df_ind_base = df_ind_base[df_ind_base['Mes_Reporte'] == mes_sel]
+if sexo_sel != 'Todos':
+    df_ind_base = df_ind_base[df_ind_base['Sexo'] == sexo_sel]
+if rango_sel != 'Todos':
+    df_ind_base = df_ind_base[df_ind_base['Rango_Etario'] == rango_sel]
+
+if len(df_ind_base) > 0:
+    records_ind = []
+    for _, row in df_ind_base.iterrows():
+        cod = str(row.get('Indicador', '1.1')).strip().lower()
+        records_ind.append({
+            'Codigo': cod,
+            'Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador/Actividad {cod.upper()}'),
+            'Ponderacion': row.get('Ponderacion', 1),
+        })
+
+    df_ind = pd.DataFrame(records_ind)
+    summary_ind = (
+        df_ind.groupby(['Codigo', 'Indicador'])['Ponderacion']
+        .sum()
+        .reset_index(name='Resultado_Mes')
+    )
+
+    todos_inds = []
+    for k, nombre in MAPA_INDICADORES_AICS.items():
+        match = summary_ind[summary_ind['Codigo'] == k]
+        res_val = int(match['Resultado_Mes'].values[0]) if not match.empty else 0
+        meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
+        alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
+        todos_inds.append({
+            'Codigo': k.upper(),
+            'Indicador': nombre,
+            'Resultado_Mes': res_val,
+            'Meta': meta_val,
+            '% Avance': f'{alc:.1f}%'
+        })
+
+    summary_final = pd.DataFrame(todos_inds)
+    summary_final = summary_final.sort_values(by='Codigo', ascending=False)
+
+    fig_ind = go.Figure()
+    fig_ind.add_trace(go.Bar(
+        y=summary_final['Indicador'],
+        x=summary_final['Resultado_Mes'],
+        name='Resultado del Mes',
+        orientation='h',
+        text=summary_final['Resultado_Mes'],
+        textposition='outside',
+        marker_color=COLOR_VERDE_COOPI
+    ))
+    fig_ind.add_trace(go.Bar(
+        y=summary_final['Indicador'],
+        x=summary_final['Meta'],
+        name='Meta Oficial',
+        orientation='h',
+        text=summary_final['Meta'],
+        textposition='outside',
+        marker_color=COLOR_AZUL_COOPI
+    ))
+
+    fig_ind.update_layout(
+        barmode='group',
+        title='Comparativa por Indicador / Actividad: Resultado del Mes vs Meta',
+        font=font_layout,
+        xaxis_title='Cantidad / Porcentaje',
+        yaxis_title='Indicador / Actividad',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        height=650
+    )
+    
+    st.plotly_chart(fig_ind, width='stretch')
+
+    st.markdown('#### Detalle de Avance por Indicador y Actividad')
+    st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
+else:
+    st.info('No hay registros suficientes para calcular los indicadores con los filtros actuales.')
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# CAPÍTULO: RESULTADO DE PROTECCIÓN (Año 2026, Proyecto AICS)
 # -----------------------------------------------------------------------------
 st.subheader('Resultado de protección')
 
-if not df_prot_kobo.empty and 'Case_ID' in df_prot_kobo.columns:
+if not df_prot_kobo.empty:
     df_proteccion_2026 = df_prot_kobo[
-        df_proteccion_2026_cond := (df_prot_kobo['Fecha_DT'].dt.year == 2026)
+        df_prot_kobo['Fecha_DT'].dt.year == 2026
     ].copy()
     
     if not df_proteccion_2026.empty:
-        df_prot_unicos_case = df_proteccion_2026.drop_duplicates(subset=['Case_ID']).copy()
-        df_prot_unicos_case['Tipo_Servicio_Proteccion'] = df_prot_unicos_case['Case_ID'].apply(clasificar_servicio_por_case_id)
+        # Re-aplicar clasificación de tipo de servicio con la variable de usuario exacta
+        col_usuario_meta = None
+        for col in df_proteccion_2026.columns:
+            if 'group_intro_prof' in col.lower() and 'user' in col.lower():
+                col_usuario_meta = col
+                break
+        if not col_usuario_meta:
+            col_usuario_meta = 'group_intro_Prof / user' if 'group_intro_Prof / user' in df_proteccion_2026.columns else 'Case_ID'
+
+        df_proteccion_2026['Tipo_Servicio_Proteccion'] = df_proteccion_2026[col_usuario_meta].apply(clasificar_servicio_por_usuario)
+        
+        df_prot_unicos_case = df_proteccion_2026.drop_duplicates(subset=['Case_ID']).copy() if 'Case_ID' in df_proteccion_2026.columns else df_proteccion_2026.copy()
         
         total_casos_prot = len(df_prot_unicos_case)
 
         df_servicios_count = (
-            df_prot_unicos_case.groupby('Tipo_Servicio_Proteccion')['Case_ID']
-            .nunique()
-            .reset_index(name='Cantidad_Unicos')
+            df_prot_unicos_case.groupby('Tipo_Servicio_Proteccion', as_index=False)
+            .size()
+            .rename(columns={'size': 'Cantidad_Unicos'})
         )
 
         col_p1, col_p2 = st.columns(2)
