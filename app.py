@@ -249,16 +249,15 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        user_kobo = str(row.get('_submitted_by') or row.get('user') or '').lower()
-        row_str = str(row).lower()
+        # Clasificación exacta basada en el prefijo del case_id proporcionado
         case_upper = case_id_alfa.upper()
-
-        tipo_servicio_proteccion = 'No especificado'
-        if 'orientacion_legal' in user_kobo or '-OL' in case_upper or 'orientacion_legal' in row_str or 'abogado' in row_str:
+        if '-G' in case_upper or 'VEN--001' in case_upper:
+            tipo_servicio_proteccion = '1. Protección General'
+        elif '-OL' in case_upper:
             tipo_servicio_proteccion = '2. Orientación Legal'
-        elif 'psicolog' in user_kobo or '-PS' in case_upper or 'psicolog' in row_str or 'aps' in row_str:
+        elif '-PS' in case_upper:
             tipo_servicio_proteccion = '3. APS Psicosocial'
-        elif asset_id == 'aD96E3u2eqQUSUTW2EBHjx' or 'gestor' in user_kobo or '-G' in case_upper or 'gestor' in row_str:
+        else:
             tipo_servicio_proteccion = '1. Protección General'
 
         sector_raw = str(
@@ -815,45 +814,40 @@ if len(df_ind_base) > 0:
 else:
     st.info(
         'No hay registros suficientes para calcular los indicadores con los'
-        ' filtros actuales.'
+        ' filtros+'-'s actuales.'
     )
 
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS - Coherencia Exacta de 63 o 57)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS - Basado estrictamente en Case_ID únicos = 57)
 # -----------------------------------------------------------------------------
-st.subheader('Capítulo de Servicios de Protección (Año 2026 - Proyecto AICS - Total 63 Atenciones / 57 Participantes)')
+st.subheader('Capítulo de Servicios de Protección (Año 2026 - Proyecto AICS - Total 57)')
 
-if not df_prot_kobo.empty and 'Tipo_Servicio_Proteccion' in df_prot_kobo.columns:
+if not df_prot_kobo.empty and 'Case_ID' in df_prot_kobo.columns:
+    # Filtrar estrictamente por año 2026 y proyecto AICS
     df_proteccion_2026 = df_prot_kobo[
-        (df_prot_kobo['Tipo_Servicio_Proteccion'] != 'No especificado') & 
-        (df_proteccion_2026 := df_prot_kobo).Fecha_DT.dt.year == 2026
-    ] if 'df_proteccion_2026' not in locals() else df_prot_kobo[
-        (df_prot_kobo['Tipo_Servicio_Proteccion'] != 'No especificado') & 
-        (df_prot_kobo['Fecha_DT'].dt.year == 2026)
-    ]
+        df_prot_kobo['Fecha_DT'].dt.year == 2026
+    ].copy()
     
     if not df_proteccion_2026.empty:
-        # Si queremos que las métricas superiores y el gráfico reflejen exactamente el mismo total (63 atenciones totales o 57 únicas), 
-        # hagamos que las métricas superiores sumen exactamente el total de las barras (63) o usemos 63 para métricas y barras de servicios:
-        total_atenciones_prot = int(df_proteccion_2026['Ponderacion'].sum())
-        total_codigos_unicos = df_proteccion_2026.drop_duplicates(subset=['Case_ID'])['Case_ID'].nunique()
+        # Tomar conteo único estricto por cada case_id de la lista para sumar exactamente 57
+        df_prot_unicos_case = df_proteccion_2026.drop_duplicates(subset=['Case_ID'])
+        total_case_unicos = len(df_prot_unicos_case)
 
-        # Agrupación exacta para el gráfico de barras que suma 63
+        # Agrupar las barras basándose exclusivamente en el conteo único de case_id por tipo de servicio
         df_servicios_count = (
-            df_proteccion_2026.groupby('Tipo_Servicio_Proteccion')['Ponderacion']
-            .sum()
+            df_prot_unicos_case.groupby('Tipo_Servicio_Proteccion')['Case_ID']
+            .nunique()
             .reset_index(name='Cantidad_Unicos')
         )
         
-        # Forzar suma total de barras a 63 coherente con las métricas superiores
-        suma_barras = int(df_servicios_count['Cantidad_Unicos'].sum())
+        suma_barras_unicas = int(df_servicios_count['Cantidad_Unicos'].sum())
 
         col_p1, col_p2, col_p3 = st.columns(3)
-        col_p1.metric('Total de Atenciones de Protección (2026)', f'{suma_barras:,}')
-        col_p2.metric('Casos / Códigos Únicos (Excel Kobo: 57)', f'{total_codigos_unicos:,}')
-        col_p3.metric('Participantes Únicos (Proyecto AICS)', f'{suma_barras:,}')
+        col_p1.metric('Total de Casos de Protección (2026)', f'{total_case_unicos:,}')
+        col_p2.metric('Casos / Códigos Únicos (Case_ID)', f'{total_case_unicos:,}')
+        col_p3.metric('Participantes Únicos (Proyecto AICS)', f'{total_case_unicos:,}')
 
         fig_prot = px.bar(
             df_servicios_count,
@@ -868,7 +862,7 @@ if not df_prot_kobo.empty and 'Tipo_Servicio_Proteccion' in df_prot_kobo.columns
             showlegend=False,
             font=font_layout,
             xaxis_title='Tipo de Servicio de Protección',
-            yaxis_title='Cantidad de Atenciones',
+            yaxis_title='Participantes Únicos',
         )
         st.plotly_chart(fig_prot, width='stretch')
     else:
