@@ -812,34 +812,41 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Filtrado estricto para el año 2026 y participantes únicos)
 # -----------------------------------------------------------------------------
-st.subheader('Capítulo de Servicios de Protección')
+st.subheader('Capítulo de Servicios de Protección (Año 2026 - Participantes Únicos)')
 
 if not df_raw.empty and 'Tipo_Servicio_Proteccion' in df_raw.columns:
-    df_proteccion = df_raw[df_raw['Tipo_Servicio_Proteccion'] != 'No especificado']
+    # 1. Filtrar estrictamente por el año 2026 y excluir 'No especificado'
+    df_proteccion_2026 = df_raw[
+        (df_raw['Tipo_Servicio_Proteccion'] != 'No especificado') & 
+        (df_raw['Fecha_DT'].dt.year == 2026)
+    ]
     
-    total_casos_proteccion = int(df_proteccion['Ponderacion'].sum()) if not df_proteccion.empty else 0
-    total_codigos_unicos = df_proteccion['Case_ID'].nunique() if not df_proteccion.empty else 0
-    total_servicios_proteccion = int(df_proteccion['Ponderacion'].sum()) if not df_proteccion.empty else 0
+    # 2. Calcular participantes únicos sin duplicidad basados en ID_Unico o Case_ID
+    df_prot_unicos = df_proteccion_2026.drop_duplicates(subset=['ID_Unico'])
+    
+    total_casos_proteccion = int(df_proteccion_2026['Ponderacion'].sum()) if not df_proteccion_2026.empty else 0
+    total_codigos_unicos = df_prot_unicos['Case_ID'].nunique() if not df_prot_unicos.empty else 0
+    total_participantes_unicos_prot = int(df_prot_unicos['Ponderacion'].sum()) if not df_prot_unicos.empty else 0
 
     col_p1, col_p2, col_p3 = st.columns(3)
-    col_p1.metric('Total de Casos de Protección', f'{total_casos_proteccion:,}')
-    col_p2.metric('Participantes Únicos (Códigos)', f'{total_codigos_unicos:,}')
-    col_p3.metric('Total de Servicios', f'{total_servicios_proteccion:,}')
+    col_p1.metric('Total de Casos de Protección (2026)', f'{total_casos_proteccion:,}')
+    col_p2.metric('Casos / Códigos Únicos', f'{total_codigos_unicos:,}')
+    col_p3.metric('Participantes Únicos (Sin Duplicidad)', f'{total_participantes_unicos_prot:,}')
 
-    if not df_proteccion.empty:
+    if not df_prot_unicos.empty:
         df_servicios_count = (
-            df_proteccion.groupby('Tipo_Servicio_Proteccion')['Ponderacion']
+            df_prot_unicos.groupby('Tipo_Servicio_Proteccion')['Ponderacion']
             .sum()
-            .reset_index(name='Cantidad_Casos')
+            .reset_index(name='Cantidad_Unicos')
         )
         
         fig_prot = px.bar(
             df_servicios_count,
             x='Tipo_Servicio_Proteccion',
-            y='Cantidad_Casos',
-            text='Cantidad_Casos',
+            y='Cantidad_Unicos',
+            text='Cantidad_Unicos',
             color='Tipo_Servicio_Proteccion',
             color_discrete_sequence=PALETA_COOPI,
         )
@@ -848,10 +855,10 @@ if not df_raw.empty and 'Tipo_Servicio_Proteccion' in df_raw.columns:
             showlegend=False,
             font=font_layout,
             xaxis_title='Tipo de Servicio de Protección',
-            yaxis_title='Cantidad de Casos',
+            yaxis_title='Participantes Únicos',
         )
         st.plotly_chart(fig_prot, width='stretch')
     else:
-        st.info('No hay registros de servicios de protección en la base de datos.')
+        st.info('No hay registros de servicios de protección para el año 2026.')
 else:
     st.info('No hay datos disponibles para el capítulo de protección.')
