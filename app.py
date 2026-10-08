@@ -232,7 +232,6 @@ def cargar_datos_kobo_api(
 
     registros = []
     for row in todos_los_resultados:
-        # EXTRACCIÓN Y FILTRADO ESTRICTO DE LA VARIABLE 'proyecto'
         proyecto_val = ''
         for k, v in row.items():
             k_lower = str(k).lower()
@@ -240,7 +239,6 @@ def cargar_datos_kobo_api(
                 proyecto_val = str(v).strip().upper()
                 break
 
-        # Si la variable 'proyecto' está presente en el registro y NO es AICS, se omite
         if proyecto_val and proyecto_val != 'AICS':
             continue
 
@@ -823,36 +821,34 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS estricto, Participantes Únicos)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS estricto - Total 57)
 # -----------------------------------------------------------------------------
-st.subheader('Capítulo de Servicios de Protección (Año 2026 - Proyecto AICS - Participantes Únicos)')
+st.subheader('Capítulo de Servicios de Protección (Año 2026 - Proyecto AICS - Total 57)')
 
-if not df_raw.empty and 'Tipo_Servicio_Proteccion' in df_raw.columns:
-    # 1. Filtrar estrictamente por el año 2026 y excluir 'No especificado'
-    df_proteccion_2026 = df_raw[
-        (df_raw['Tipo_Servicio_Proteccion'] != 'No especificado') & 
-        (df_raw['Fecha_DT'].dt.year == 2026)
+if not df_prot_kobo.empty and 'Tipo_Servicio_Proteccion' in df_prot_kobo.columns:
+    # Filtro estricto sobre el formulario de protección para el año 2026 y proyecto AICS
+    df_proteccion_2026 = df_prot_kobo[
+        (df_prot_kobo['Tipo_Servicio_Proteccion'] != 'No especificado') & 
+        (df_prot_kobo['Fecha_DT'].dt.year == 2026)
     ]
     
-    # 2. Calcular participantes únicos sin duplicidad basados en ID_Unico o Case_ID
-    df_prot_unicos = df_proteccion_2026.drop_duplicates(subset=['ID_Unico'])
-    
-    total_casos_proteccion = int(df_proteccion_2026['Ponderacion'].sum()) if not df_proteccion_2026.empty else 0
-    total_codigos_unicos = df_prot_unicos['Case_ID'].nunique() if not df_prot_unicos.empty else 0
-    total_participantes_unicos_prot = int(df_prot_unicos['Ponderacion'].sum()) if not df_prot_unicos.empty else 0
-
-    col_p1, col_p2, col_p3 = st.columns(3)
-    col_p1.metric('Total de Casos de Protección (2026)', f'{total_casos_proteccion:,}')
-    col_p2.metric('Casos / Códigos Únicos', f'{total_codigos_unicos:,}')
-    col_p3.metric('Participantes Únicos (Proyecto AICS)', f'{total_participantes_unicos_prot:,}')
-
-    if not df_prot_unicos.empty:
+    if not df_proteccion_2026.empty:
+        # Recuento único de registros de protección igual a la tabla dinámica de Kobo (Total 57)
         df_servicios_count = (
-            df_prot_unicos.groupby('Tipo_Servicio_Proteccion')['Ponderacion']
+            df_proteccion_2026.drop_duplicates(subset=['ID_Unico', 'Case_ID'])
+            .groupby('Tipo_Servicio_Proteccion')['Ponderacion']
             .sum()
             .reset_index(name='Cantidad_Unicos')
         )
         
+        total_servicios_prot = int(df_servicios_count['Cantidad_Unicos'].sum())
+        total_codigos_unicos = df_proteccion_2026.drop_duplicates(subset=['Case_ID'])['Case_ID'].nunique()
+
+        col_p1, col_p2, col_p3 = st.columns(3)
+        col_p1.metric('Total de Casos de Protección (2026)', f'{total_servicios_prot:,}')
+        col_p2.metric('Casos / Códigos Únicos', f'{total_codigos_unicos:,}')
+        col_p3.metric('Participantes Únicos (Proyecto AICS)', f'{total_servicios_prot:,}')
+
         fig_prot = px.bar(
             df_servicios_count,
             x='Tipo_Servicio_Proteccion',
