@@ -177,6 +177,22 @@ METAS_INDICADORES_AICS = {
     'r2a4': {'meta': 1500, 'tipo': 'numero'},
 }
 
+# RESULTADOS CALCULADOS Y DEFINIDOS POR EL USUARIO PARA LOS INDICADORES
+RESULTADOS_CALCULADOS_USUARIO = {
+    '1.1': 180,
+    '1.2': 35,
+    '1.3': 17,
+    '2.1': 18,
+    '2.2': 0,
+    '2.3': 277,
+    'ob-1': 0,
+    'ob-2': 25,
+    'r1a4': 0,
+    'r1a5': 0,
+    'r2a2': 0,
+    'r2a4': 0,
+}
+
 font_layout = dict(family='Quicksand', size=13)
 
 
@@ -259,7 +275,6 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Búsqueda robusta de la variable de usuario para clasificación de protección
         usuario_val = ''
         for k, v in row.items():
             k_l = str(k).lower()
@@ -740,84 +755,56 @@ st.markdown('---')
 # -----------------------------------------------------------------------------
 st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
 
-df_ind_base = df_raw.copy()
-if mes_sel != 'Todos':
-    df_ind_base = df_ind_base[df_ind_base['Mes_Reporte'] == mes_sel]
-if sexo_sel != 'Todos':
-    df_ind_base = df_ind_base[df_ind_base['Sexo'] == sexo_sel]
-if rango_sel != 'Todos':
-    df_ind_base = df_ind_base[df_ind_base['Rango_Etario'] == rango_sel]
+todos_inds = []
+for k, nombre in MAPA_INDICADORES_AICS.items():
+    res_val = RESULTADOS_CALCULADOS_USUARIO.get(k, 0)
+    meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
+    alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
+    todos_inds.append({
+        'Codigo': k.upper(),
+        'Indicador': nombre,
+        'Resultado_Mes': res_val,
+        'Meta': meta_val,
+        '% Avance': f'{alc:.1f}%'
+    })
 
-if len(df_ind_base) > 0:
-    records_ind = []
-    for _, row in df_ind_base.iterrows():
-        cod = str(row.get('Indicador', '1.1')).strip().lower()
-        records_ind.append({
-            'Codigo': cod,
-            'Indicador': MAPA_INDICADORES_AICS.get(cod, f'Indicador/Actividad {cod.upper()}'),
-            'Ponderacion': row.get('Ponderacion', 1),
-        })
+summary_final = pd.DataFrame(todos_inds)
+summary_final = summary_final.sort_values(by='Codigo', ascending=False)
 
-    df_ind = pd.DataFrame(records_ind)
-    summary_ind = (
-        df_ind.groupby(['Codigo', 'Indicador'])['Ponderacion']
-        .sum()
-        .reset_index(name='Resultado_Mes')
-    )
+fig_ind = go.Figure()
+fig_ind.add_trace(go.Bar(
+    y=summary_final['Indicador'],
+    x=summary_final['Resultado_Mes'],
+    name='Resultado del Mes',
+    orientation='h',
+    text=summary_final['Resultado_Mes'],
+    textposition='outside',
+    marker_color=COLOR_VERDE_COOPI
+))
+fig_ind.add_trace(go.Bar(
+    y=summary_final['Indicador'],
+    x=summary_final['Meta'],
+    name='Meta Oficial',
+    orientation='h',
+    text=summary_final['Meta'],
+    textposition='outside',
+    marker_color=COLOR_AZUL_COOPI
+))
 
-    todos_inds = []
-    for k, nombre in MAPA_INDICADORES_AICS.items():
-        match = summary_ind[summary_ind['Codigo'] == k]
-        res_val = int(match['Resultado_Mes'].values[0]) if not match.empty else 0
-        meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
-        alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
-        todos_inds.append({
-            'Codigo': k.upper(),
-            'Indicador': nombre,
-            'Resultado_Mes': res_val,
-            'Meta': meta_val,
-            '% Avance': f'{alc:.1f}%'
-        })
+fig_ind.update_layout(
+    barmode='group',
+    title='Comparativa por Indicador / Actividad: Resultado del Mes vs Meta',
+    font=font_layout,
+    xaxis_title='Cantidad / Porcentaje',
+    yaxis_title='Indicador / Actividad',
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    height=650
+)
 
-    summary_final = pd.DataFrame(todos_inds)
-    summary_final = summary_final.sort_values(by='Codigo', ascending=False)
+st.plotly_chart(fig_ind, width='stretch')
 
-    fig_ind = go.Figure()
-    fig_ind.add_trace(go.Bar(
-        y=summary_final['Indicador'],
-        x=summary_final['Resultado_Mes'],
-        name='Resultado del Mes',
-        orientation='h',
-        text=summary_final['Resultado_Mes'],
-        textposition='outside',
-        marker_color=COLOR_VERDE_COOPI
-    ))
-    fig_ind.add_trace(go.Bar(
-        y=summary_final['Indicador'],
-        x=summary_final['Meta'],
-        name='Meta Oficial',
-        orientation='h',
-        text=summary_final['Meta'],
-        textposition='outside',
-        marker_color=COLOR_AZUL_COOPI
-    ))
-
-    fig_ind.update_layout(
-        barmode='group',
-        title='Comparativa por Indicador / Actividad: Resultado del Mes vs Meta',
-        font=font_layout,
-        xaxis_title='Cantidad / Porcentaje',
-        yaxis_title='Indicador / Actividad',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-        height=650
-    )
-    
-    st.plotly_chart(fig_ind, width='stretch')
-
-    st.markdown('#### Detalle de Avance por Indicador y Actividad')
-    st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
-else:
-    st.info('No hay registros suficientes para calcular los indicadores con los filtros actuales.')
+st.markdown('#### Detalle de Avance por Indicador y Actividad')
+st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
 
 st.markdown('---')
 
