@@ -233,6 +233,11 @@ def cargar_datos_kobo_api(
 
     registros = []
     for row in todos_los_resultados:
+        # EXCLUSIÓN ESTRICTA: Omitir registros que correspondan o contengan referencias a "Íntegras"
+        row_str_check = str(row).lower()
+        if 'integras' in row_str_check or 'íntegras' in row_str_check or 'integra' in row_str_check:
+            continue
+
         meta_alfa = row.get('group_metadatos_alfa', {})
         case_id_alfa = ''
         if isinstance(meta_alfa, dict):
@@ -241,15 +246,14 @@ def cargar_datos_kobo_api(
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
         user_kobo = str(row.get('_submitted_by') or row.get('user') or '').lower()
-        row_str = str(row).lower()
         case_upper = case_id_alfa.upper()
 
         tipo_servicio_proteccion = 'No especificado'
-        if 'orientacion_legal' in user_kobo or '-OL' in case_upper or 'orientacion_legal' in row_str or 'abogado' in row_str:
+        if 'orientacion_legal' in user_kobo or '-OL' in case_upper or 'orientacion_legal' in row_str_check or 'abogado' in row_str_check:
             tipo_servicio_proteccion = '2. Orientación Legal'
-        elif 'psicolog' in user_kobo or '-PS' in case_upper or 'psicolog' in row_str or 'aps' in row_str:
+        elif 'psicolog' in user_kobo or '-PS' in case_upper or 'psicolog' in row_str_check or 'aps' in row_str_check:
             tipo_servicio_proteccion = '3. APS Psicosocial'
-        elif asset_id == 'aD96E3u2eqQUSUTW2EBHjx' or 'gestor' in user_kobo or '-G' in case_upper or 'gestor' in row_str:
+        elif asset_id == 'aD96E3u2eqQUSUTW2EBHjx' or 'gestor' in user_kobo or '-G' in case_upper or 'gestor' in row_str_check:
             tipo_servicio_proteccion = '1. Protección General'
 
         sector_raw = str(
@@ -812,9 +816,9 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Filtrado estricto para el año 2026 y participantes únicos)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Sin Íntegras, Participantes Únicos)
 # -----------------------------------------------------------------------------
-st.subheader('Capítulo de Servicios de Protección (Año 2026 - Participantes Únicos)')
+st.subheader('Capítulo de Servicios de Protección (Año 2026 - Proyecto AICS - Participantes Únicos)')
 
 if not df_raw.empty and 'Tipo_Servicio_Proteccion' in df_raw.columns:
     # 1. Filtrar estrictamente por el año 2026 y excluir 'No especificado'
@@ -833,7 +837,7 @@ if not df_raw.empty and 'Tipo_Servicio_Proteccion' in df_raw.columns:
     col_p1, col_p2, col_p3 = st.columns(3)
     col_p1.metric('Total de Casos de Protección (2026)', f'{total_casos_proteccion:,}')
     col_p2.metric('Casos / Códigos Únicos', f'{total_codigos_unicos:,}')
-    col_p3.metric('Participantes Únicos (Sin Duplicidad)', f'{total_participantes_unicos_prot:,}')
+    col_p3.metric('Participantes Únicos (Proyecto AICS)', f'{total_participantes_unicos_prot:,}')
 
     if not df_prot_unicos.empty:
         df_servicios_count = (
@@ -859,6 +863,6 @@ if not df_raw.empty and 'Tipo_Servicio_Proteccion' in df_raw.columns:
         )
         st.plotly_chart(fig_prot, width='stretch')
     else:
-        st.info('No hay registros de servicios de protección para el año 2026.')
+        st.info('No hay registros de servicios de protección para el año 2026 bajo el proyecto AICS.')
 else:
     st.info('No hay datos disponibles para el capítulo de protección.')
