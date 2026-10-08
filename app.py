@@ -169,4 +169,72 @@ METAS_INDICADORES_AICS = {
     'ob-2': {'meta': 85, 'tipo': 'porcentaje'},
     '1.1': {'meta': 4800, 'tipo': 'numero'},
     '1.2': {'meta': 2000, 'tipo': 'numero'},
-    '1.
+    '1.3': {'meta': 100, 'tipo': 'porcentaje'},
+    '2.1': {'meta': 1580, 'tipo': 'numero'},
+    '2.2': {'meta': 75, 'tipo': 'porcentaje'},
+    '2.3': {'meta': 4134, 'tipo': 'numero'},
+    'r1a4': {'meta': 2200, 'tipo': 'numero'},
+    'r1a5': {'meta': 2500, 'tipo': 'numero'},
+    'r2a2': {'meta': 195, 'tipo': 'numero'},
+    'r2a4': {'meta': 1500, 'tipo': 'numero'},
+}
+
+font_layout = dict(family='Quicksand', size=13)
+
+
+def limpiar_texto(texto):
+    if not texto or str(texto).lower() in ['none', 'nan', '']:
+        return 'No especificado'
+    return str(texto).strip().title()
+
+
+def normalizar_sexo(valor):
+    s = str(valor).lower().strip()
+    if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2']):
+        return 'Mujer'
+    elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1']):
+        return 'Hombre'
+    return 'Mujer'
+
+
+def normalizar_discapacidad(valor):
+    s = str(valor).lower().strip()
+    if any(x in s for x in ['sí', 'si', 'yes', 'true', '1']) and 'count_' not in s:
+        return 'Sí'
+    return 'No'
+
+
+# -----------------------------------------------------------------------------
+# 2. CARGA DE DATOS CON PAGINACIÓN COMPLETA DESDE LA API DE KOBOTOOLBOX
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600)
+def cargar_datos_kobo_api(
+    asset_id, token, kobo_url='https://eu.kobotoolbox.org'
+):
+    headers = {'Authorization': f'Token {token}'}
+    url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
+    
+    todos_los_resultados = []
+    try:
+        while url:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code != 200:
+                break
+            res_json = response.json()
+            data = res_json.get('results', [])
+            if data:
+                todos_los_resultados.extend(data)
+            url = res_json.get('next', None)
+    except Exception:
+        pass
+
+    if not todos_los_resultados:
+        return pd.DataFrame()
+
+    registros = []
+    for row in todos_los_resultados:
+        # Validación estricta de la variable 'proyecto'
+        proyecto_val = ''
+        for k, v in row.items():
+            k_lower = str(k).lower()
+            if k_lower == 'proyecto' or k_
