@@ -56,7 +56,7 @@ st.markdown(
         color: #0072CE !important;
         margin-bottom: 5px !important;
         font-weight: 800 !important;
-        font-size: 1.6rem !important;
+        font-size: 1.5rem !important;
     }
     </style>
 """,
@@ -148,7 +148,6 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
-# MAPEO DE INDICADORES / ACTIVIDADES OFICIALES
 MAPA_INDICADORES_AICS = {
     'ob-1': 'OB-1: % Asistencia humanitaria segura y participativa',
     'ob-2': 'OB-2: % Acceso a agua y servicios higiénico-sanitarios',
@@ -205,7 +204,7 @@ def normalizar_discapacidad(valor):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS CON PAGINACIÓN COMPLETA DESDE LA API DE KOBOTOOLBOX
+# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -233,15 +232,47 @@ def cargar_datos_kobo_api(
 
     registros = []
     for row in todos_los_resultados:
-        # Validación estricta de la variable 'proyecto'
+        # Validación corregida de campos
         proyecto_val = ''
+        estado_val = 'Distrito Capital'
+        municipio_val = 'Libertador'
+        sexo_val = 'Mujer'
+        discapacidad_val = 'No'
+        
         for k, v in row.items():
             k_lower = str(k).lower()
-            if k_lower == 'proyecto' or 'proyecto' in k_lower:
+            if 'proyecto' in k_lower:
                 proyecto_val = str(v)
-                break
-        
-        # Aquí puedes continuar con el resto de la extracción de tus campos de Kobo...
-        registros.append(row)
+            elif 'estado' in k_lower or 'geoposition_state' in k_lower:
+                estado_val = MAPA_ESTADOS.get(str(v), str(v))
+            elif 'municipio' in k_lower:
+                municipio_val = MAPA_MUNICIPIOS.get(str(v), str(v))
+            elif 'sexo' in k_lower or 'genero' in k_lower:
+                sexo_val = normalizar_sexo(v)
+            elif 'discapacidad' in k_lower:
+                discapacidad_val = normalizar_discapacidad(v)
+
+        registros.append({
+            'proyecto': limpiar_texto(proyecto_val),
+            'estado': limpiar_texto(estado_val),
+            'municipio': limpiar_texto(municipio_val),
+            'sexo': sexo_val,
+            'discapacidad': discapacidad_val,
+            **row
+        })
 
     return pd.DataFrame(registros)
+
+# Configuración en Barra Lateral para Credenciales / Parámetros
+st.sidebar.header("⚙️ Configuración y Filtros")
+token_input = st.sidebar.text_input("Token API KoboToolbox", type="password")
+asset_input = st.sidebar.text_input("Asset ID KoboToolbox", value="")
+
+if token_input and asset_input:
+    df_data = cargar_datos_kobo_api(asset_input, token_input)
+    if not df_data.empty:
+        st.sidebar.success(f"✅ Datos cargados correctamente ({len(df_data)} registros)")
+    else:
+        st.warning("⚠️ No se encontraron registros o hubo un error de conexión con KoboToolbox.")
+else:
+    st.info("ℹ️ Por favor introduce tu Token y Asset ID de KoboToolbox en la barra lateral para visualizar el tablero.")
