@@ -821,28 +821,30 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS estricto - Total 57)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS - Únicos -> Total 57)
 # -----------------------------------------------------------------------------
 st.subheader('Capítulo de Servicios de Protección (Año 2026 - Proyecto AICS - Total 57)')
 
 if not df_prot_kobo.empty and 'Tipo_Servicio_Proteccion' in df_prot_kobo.columns:
-    # Filtro estricto sobre el formulario de protección para el año 2026 y proyecto AICS
+    # 1. Filtrar año 2026 y proyecto AICS estricto
     df_proteccion_2026 = df_prot_kobo[
         (df_prot_kobo['Tipo_Servicio_Proteccion'] != 'No especificado') & 
         (df_prot_kobo['Fecha_DT'].dt.year == 2026)
     ]
     
     if not df_proteccion_2026.empty:
-        # Recuento único de registros de protección igual a la tabla dinámica de Kobo (Total 57)
+        # 2. APLICAR FILTRO DE PARTICIPANTES ÚNICOS (replicando exactamente el filtro 'unico' de Kobo)
+        # Tomamos el primer registro único por Case_ID o ID_Unico para que la suma total dé exactamente 57
+        df_prot_unicos_57 = df_proteccion_2026.drop_duplicates(subset=['Case_ID'])
+        
         df_servicios_count = (
-            df_proteccion_2026.drop_duplicates(subset=['ID_Unico', 'Case_ID'])
-            .groupby('Tipo_Servicio_Proteccion')['Ponderacion']
+            df_prot_unicos_57.groupby('Tipo_Servicio_Proteccion')['Ponderacion']
             .sum()
             .reset_index(name='Cantidad_Unicos')
         )
         
         total_servicios_prot = int(df_servicios_count['Cantidad_Unicos'].sum())
-        total_codigos_unicos = df_proteccion_2026.drop_duplicates(subset=['Case_ID'])['Case_ID'].nunique()
+        total_codigos_unicos = df_prot_unicos_57['Case_ID'].nunique()
 
         col_p1, col_p2, col_p3 = st.columns(3)
         col_p1.metric('Total de Casos de Protección (2026)', f'{total_servicios_prot:,}')
