@@ -4,7 +4,6 @@ import folium
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import requests
 import streamlit as st
 from streamlit_folium import st_folium
@@ -96,7 +95,7 @@ with col_header_logo:
         except TypeError:
             st.image(logo_path, use_container_width=True)
     else:
-        st.warning("⚠️ No se encontró la imagen del logo en el repositorio.")
+        st.warning('⚠️ No se encontró la imagen del logo en el repositorio.')
 
 st.markdown('---')
 
@@ -213,7 +212,7 @@ def cargar_datos_kobo_api(
 ):
     headers = {'Authorization': f'Token {token}'}
     url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
-    
+
     todos_los_resultados = []
     try:
         while url:
@@ -240,8 +239,8 @@ def cargar_datos_kobo_api(
             if k_lower == 'proyecto' or k_lower.endswith('/proyecto'):
                 proyecto_val = str(v).strip().upper()
                 break
-        
-        # Si la variable 'proyecto' está presente en el registro y NO es AICS, se omite (ej. ECHO, Íntegras, etc.)
+
+        # Si la variable 'proyecto' está presente en el registro y NO es AICS, se omite
         if proyecto_val and proyecto_val != 'AICS':
             continue
 
