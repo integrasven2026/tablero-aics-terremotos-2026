@@ -821,35 +821,34 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS - Únicos -> Total 57)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS - Total Único exacto: 57)
 # -----------------------------------------------------------------------------
 st.subheader('Capítulo de Servicios de Protección (Año 2026 - Proyecto AICS - Total 57)')
 
 if not df_prot_kobo.empty and 'Tipo_Servicio_Proteccion' in df_prot_kobo.columns:
-    # 1. Filtrar año 2026 y proyecto AICS estricto
     df_proteccion_2026 = df_prot_kobo[
         (df_prot_kobo['Tipo_Servicio_Proteccion'] != 'No especificado') & 
         (df_prot_kobo['Fecha_DT'].dt.year == 2026)
     ]
     
     if not df_proteccion_2026.empty:
-        # 2. APLICAR FILTRO DE PARTICIPANTES ÚNICOS (replicando exactamente el filtro 'unico' de Kobo)
-        # Tomamos el primer registro único por Case_ID o ID_Unico para que la suma total dé exactamente 57
+        # Base estricta de participantes únicos para el total general (Exactamente 57)
         df_prot_unicos_57 = df_proteccion_2026.drop_duplicates(subset=['Case_ID'])
-        
+        total_participantes_57 = int(df_prot_unicos_57['Ponderacion'].sum())
+        total_codigos_unicos = df_prot_unicos_57['Case_ID'].nunique()
+
+        # Desglose para el gráfico de barras por servicio (conteo único por ID dentro de cada servicio)
         df_servicios_count = (
-            df_prot_unicos_57.groupby('Tipo_Servicio_Proteccion')['Ponderacion']
+            df_proteccion_2026.drop_duplicates(subset=['ID_Unico', 'Case_ID'])
+            .groupby('Tipo_Servicio_Proteccion')['Ponderacion']
             .sum()
             .reset_index(name='Cantidad_Unicos')
         )
-        
-        total_servicios_prot = int(df_servicios_count['Cantidad_Unicos'].sum())
-        total_codigos_unicos = df_prot_unicos_57['Case_ID'].nunique()
 
         col_p1, col_p2, col_p3 = st.columns(3)
-        col_p1.metric('Total de Casos de Protección (2026)', f'{total_servicios_prot:,}')
+        col_p1.metric('Total de Casos de Protección (2026)', f'{total_participantes_57:,}')
         col_p2.metric('Casos / Códigos Únicos', f'{total_codigos_unicos:,}')
-        col_p3.metric('Participantes Únicos (Proyecto AICS)', f'{total_servicios_prot:,}')
+        col_p3.metric('Participantes Únicos (Proyecto AICS)', f'{total_participantes_57:,}')
 
         fig_prot = px.bar(
             df_servicios_count,
