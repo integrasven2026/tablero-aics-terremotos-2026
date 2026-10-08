@@ -259,15 +259,18 @@ def cargar_datos_kobo_api(
         elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        # Extraer variable de usuario para clasificación de protección
+        # Búsqueda robusta de la variable de usuario para clasificación de protección
         usuario_val = ''
         for k, v in row.items():
             k_l = str(k).lower()
-            if 'group_intro_prof' in k_l and 'user' in k_l:
+            if ('user' in k_l or 'prof' in k_l) and ('intro' in k_l or 'group_intro' in k_l):
                 usuario_val = str(v)
                 break
         if not usuario_val:
-            usuario_val = str(row.get('group_intro_Prof / user', ''))
+            for k, v in row.items():
+                if any(x in str(v).lower() for x in ['orientacion_legal', 'psicologo', 'gestor']):
+                    usuario_val = str(v)
+                    break
 
         tipo_servicio_proteccion = clasificar_servicio_por_usuario(usuario_val)
 
@@ -829,23 +832,10 @@ if not df_prot_kobo.empty:
     ].copy()
     
     if not df_proteccion_2026.empty:
-        # Re-aplicar clasificación de tipo de servicio con la variable de usuario exacta
-        col_usuario_meta = None
-        for col in df_proteccion_2026.columns:
-            if 'group_intro_prof' in col.lower() and 'user' in col.lower():
-                col_usuario_meta = col
-                break
-        if not col_usuario_meta:
-            col_usuario_meta = 'group_intro_Prof / user' if 'group_intro_Prof / user' in df_proteccion_2026.columns else 'Case_ID'
-
-        df_proteccion_2026['Tipo_Servicio_Proteccion'] = df_proteccion_2026[col_usuario_meta].apply(clasificar_servicio_por_usuario)
-        
-        df_prot_unicos_case = df_proteccion_2026.drop_duplicates(subset=['Case_ID']).copy() if 'Case_ID' in df_proteccion_2026.columns else df_proteccion_2026.copy()
-        
-        total_casos_prot = len(df_prot_unicos_case)
+        total_casos_prot = len(df_proteccion_2026)
 
         df_servicios_count = (
-            df_prot_unicos_case.groupby('Tipo_Servicio_Proteccion', as_index=False)
+            df_proteccion_2026.groupby('Tipo_Servicio_Proteccion', as_index=False)
             .size()
             .rename(columns={'size': 'Cantidad_Unicos'})
         )
