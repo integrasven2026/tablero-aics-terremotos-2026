@@ -157,7 +157,7 @@ MAPA_INDICADORES_AICS = {
     '1.3': 'Indicador 1.3: % Personas con discapacidad con WASH adaptadas',
     '2.1': 'Indicador 2.1: N.º de niños y niñas con apoyo psicosocial / CFS',
     '2.2': 'Indicador 2.2: % Población con conocimiento de prevención VBG',
-    '2.3': 'Indicador 2.3: N.º de personas con medidas de protección y prevención',
+    '2.3': 'Indicador 2.3: N.º de personas con medidas de protección y prevention',
     'r1a4': 'R1A4: Fortalecimiento capacidades (WASH/Dignidad)',
     'r1a5': 'R1A5: Sesiones informativas y sensibilización',
     'r2a2': 'R2A2: Gestión de casos y asistencia personalizada',
@@ -233,9 +233,16 @@ def cargar_datos_kobo_api(
 
     registros = []
     for row in todos_los_resultados:
-        # EXCLUSIÓN ESTRICTA: Omitir registros que correspondan o contengan referencias a "Íntegras"
-        row_str_check = str(row).lower()
-        if 'integras' in row_str_check or 'íntegras' in row_str_check or 'integra' in row_str_check:
+        # EXTRACCIÓN Y FILTRADO ESTRICTO DE LA VARIABLE 'proyecto'
+        proyecto_val = ''
+        for k, v in row.items():
+            k_lower = str(k).lower()
+            if k_lower == 'proyecto' or k_lower.endswith('/proyecto'):
+                proyecto_val = str(v).strip().upper()
+                break
+        
+        # Si la variable 'proyecto' está presente en el registro y NO es AICS, se omite (ej. ECHO, Íntegras, etc.)
+        if proyecto_val and proyecto_val != 'AICS':
             continue
 
         meta_alfa = row.get('group_metadatos_alfa', {})
@@ -246,14 +253,15 @@ def cargar_datos_kobo_api(
             case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
         user_kobo = str(row.get('_submitted_by') or row.get('user') or '').lower()
+        row_str = str(row).lower()
         case_upper = case_id_alfa.upper()
 
         tipo_servicio_proteccion = 'No especificado'
-        if 'orientacion_legal' in user_kobo or '-OL' in case_upper or 'orientacion_legal' in row_str_check or 'abogado' in row_str_check:
+        if 'orientacion_legal' in user_kobo or '-OL' in case_upper or 'orientacion_legal' in row_str or 'abogado' in row_str:
             tipo_servicio_proteccion = '2. Orientación Legal'
-        elif 'psicolog' in user_kobo or '-PS' in case_upper or 'psicolog' in row_str_check or 'aps' in row_str_check:
+        elif 'psicolog' in user_kobo or '-PS' in case_upper or 'psicolog' in row_str or 'aps' in row_str:
             tipo_servicio_proteccion = '3. APS Psicosocial'
-        elif asset_id == 'aD96E3u2eqQUSUTW2EBHjx' or 'gestor' in user_kobo or '-G' in case_upper or 'gestor' in row_str_check:
+        elif asset_id == 'aD96E3u2eqQUSUTW2EBHjx' or 'gestor' in user_kobo or '-G' in case_upper or 'gestor' in row_str:
             tipo_servicio_proteccion = '1. Protección General'
 
         sector_raw = str(
@@ -816,7 +824,7 @@ else:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Sin Íntegras, Participantes Únicos)
+# CAPÍTULO: SERVICIOS DE PROTECCIÓN (Año 2026, Proyecto AICS estricto, Participantes Únicos)
 # -----------------------------------------------------------------------------
 st.subheader('Capítulo de Servicios de Protección (Año 2026 - Proyecto AICS - Participantes Únicos)')
 
