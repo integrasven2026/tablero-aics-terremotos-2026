@@ -237,4 +237,11 @@ def cargar_datos_kobo_api(
         proyecto_val = ''
         for k, v in row.items():
             k_lower = str(k).lower()
-            if k_lower == 'proyecto' or k_
+            if k_lower == 'proyecto' or 'proyecto' in k_lower:
+                proyecto_val = str(v)
+                break
+        
+        # Aquí puedes continuar con el resto de la extracción de tus campos de Kobo...
+        registros.append(row)
+
+    return pd.DataFrame(registros)
