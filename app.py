@@ -71,7 +71,7 @@ with col_header_title:
     st.markdown(
         "<h1 class='titulo-principal'>Tablero de Monitoreo Proyecto Intervención"
         ' de emergencia en respuesta a la crisis en Venezuela tras los'
-        ' terremotos - Venezuela Proyecto AICS (SIGA)</h1>',
+        ' terremotos - Venezuela Proyecto AICS</h1>',
         unsafe_allow_html=True,
     )
 
@@ -99,25 +99,42 @@ with col_header_logo:
 
 st.markdown('---')
 
+# META OFICIAL DEL PROYECTO
 META_PARTICIPANTES_UNICOS = 4906
 
 MESES_ES = {
-    1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
-    7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    1: 'Enero',
+    2: 'Febrero',
+    3: 'Marzo',
+    4: 'Abril',
+    5: 'Mayo',
+    6: 'Junio',
+    7: 'Julio',
+    8: 'Agosto',
+    9: 'Septiembre',
+    10: 'Octubre',
+    11: 'Noviembre',
+    12: 'Diciembre',
 }
 
 MAPA_ESTADOS = {
+    'VE01': 'Distrito Capital',
+    'VE15': 'Miranda',
+    'VE24': 'La Guaira',
     'Distrito Capital': 'Distrito Capital',
     'Miranda': 'Miranda',
     'La Guaira': 'La Guaira',
 }
 
 MAPA_MUNICIPIOS = {
+    'VE0101': 'Libertador',
+    'VE1508': 'Cristobal Rojas',
+    'VE1515': 'Paz Castillo',
+    'VE1519': 'Sucre (Miranda)',
+    'VE1520': 'Urdaneta',
+    'VE2401': 'Vargas',
     'Libertador': 'Libertador',
     'Cristobal Rojas': 'Cristobal Rojas',
-    'Paz Castillo': 'Paz Castillo',
-    'Sucre (Miranda)': 'Sucre (Miranda)',
-    'Urdaneta': 'Urdaneta',
     'Vargas': 'Vargas',
 }
 
@@ -160,9 +177,20 @@ METAS_INDICADORES_AICS = {
     'r2a4': {'meta': 1500, 'tipo': 'numero'},
 }
 
+# RESULTADOS CALCULADOS Y DEFINIDOS POR EL USUARIO PARA LOS INDICADORES
 RESULTADOS_CALCULADOS_USUARIO = {
-    '1.1': 180, '1.2': 35, '1.3': 17, '2.1': 18, '2.2': 0, '2.3': 277,
-    'ob-1': 0, 'ob-2': 25, 'r1a4': 0, 'r1a5': 0, 'r2a2': 0, 'r2a4': 0,
+    '1.1': 180,
+    '1.2': 35,
+    '1.3': 17,
+    '2.1': 18,
+    '2.2': 0,
+    '2.3': 277,
+    'ob-1': 0,
+    'ob-2': 25,
+    'r1a4': 0,
+    'r1a5': 0,
+    'r2a2': 0,
+    'r2a4': 0,
 }
 
 font_layout = dict(family='Quicksand', size=13)
@@ -176,76 +204,360 @@ def limpiar_texto(texto):
 
 def normalizar_sexo(valor):
     s = str(valor).lower().strip()
-    if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2', 'm']):
+    if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2']):
         return 'Mujer'
-    elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1', 'h']):
+    elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1']):
         return 'Hombre'
     return 'Mujer'
 
 
+def normalizar_discapacidad(valor):
+    s = str(valor).lower().strip()
+    if any(x in s for x in ['sí', 'si', 'yes', 'true', '1']) and 'count_' not in s:
+        return 'Sí'
+    return 'No'
+
+
+def clasificar_servicio_por_usuario(val):
+    s = str(val).lower().strip()
+    if 'orientacion_legal' in s or 'abogado' in s:
+        return 'Orientación Legal'
+    elif 'psicologo' in s or 'psico' in s:
+        return 'APS Psicosocial'
+    elif 'gestor' in s:
+        return 'Gestoría de Caso'
+    return 'Gestoría de Caso'
+
+
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS LOCALES DESDE EL EXCEL DE KOBO (SIGA)
+# 2. CARGA DE DATOS CON PAGINACIÓN COMPLETA DESDE LA API DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
-def cargar_datos_siga_excel():
-    archivo_excel = 'AICS_-_SISTEMA_INTEGRAL_DE_GESTIÓN_DE_ASISTENCIA_-_SIGA_.xlsx'
-    if not os.path.exists(archivo_excel):
+def cargar_datos_kobo_api(
+    asset_id, token, kobo_url='https://eu.kobotoolbox.org'
+):
+    headers = {'Authorization': f'Token {token}'}
+    url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
+
+    todos_los_resultados = []
+    try:
+        while url:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code != 200:
+                break
+            res_json = response.json()
+            data = res_json.get('results', [])
+            if data:
+                todos_los_resultados.extend(data)
+            url = res_json.get('next', None)
+    except Exception:
+        pass
+
+    if not todos_los_resultados:
         return pd.DataFrame()
 
-    df_ben = pd.read_excel(archivo_excel, sheet_name='group_beneficiario')
-    df_main = pd.read_excel(archivo_excel, sheet_name='AICS - SISTEMA INTEGRAL DE G...')
-
-    # Mapear datos principales por _index o _submission__id
-    main_dict = {}
-    for _, row in df_main.iterrows():
-        idx = row.get('_index')
-        if pd.notnull(idx):
-            main_dict[idx] = {
-                'Estado': MAPA_ESTADOS.get(str(row.get('Estado')).strip(), 'Distrito Capital'),
-                'Municipio': MAPA_MUNICIPIOS.get(str(row.get('Municipio')).strip(), 'Libertador'),
-                'Fecha': row.get('Fecha de la Actividad:') or row.get('_submission_time')
-            }
-
     registros = []
-    for _, b in df_ben.iterrows():
-        parent_idx = b.get('_parent_index')
-        info_main = main_dict.get(parent_idx, {'Estado': 'Distrito Capital', 'Municipio': 'Libertador', 'Fecha': None})
+    for row in todos_los_resultados:
+        proyecto_val = ''
+        for k, v in row.items():
+            k_lower = str(k).lower()
+            if k_lower == 'proyecto' or k_lower.endswith('/proyecto'):
+                proyecto_val = str(v).strip().upper()
+                break
 
-        cid = str(b.get('CodigoID', '')).strip()
-        sexo_val = str(b.get('Sexo', '')).strip()
-        rango_val = str(b.get('rango_etario', '')).strip()
-        disc_val = str(b.get('Persona con Discapacidad', 'No')).strip()
+        if proyecto_val and proyecto_val != 'AICS':
+            continue
 
-        sexo = normalizar_sexo(sexo_val)
-        rango_etario = limpiar_texto(rango_val)
-        discapacidad = 'Sí' if any(x in disc_val.lower() for x in ['sí', 'si', 'yes', 'true', '1']) else 'No'
+        meta_alfa = row.get('group_metadatos_alfa', {})
+        case_id_alfa = ''
+        if isinstance(meta_alfa, dict):
+            case_id_alfa = str(meta_alfa.get('case_id', '')).strip()
+        elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
+            case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
 
-        id_unico = f'ID_{cid}' if cid and cid.lower() not in ['none', '', '0', 'nan'] else f"ROW_{parent_idx}_{b.get('_index', 0)}"
+        usuario_val = ''
+        for k, v in row.items():
+            k_l = str(k).lower()
+            if ('user' in k_l or 'prof' in k_l) and ('intro' in k_l or 'group_intro' in k_l):
+                usuario_val = str(v)
+                break
+        if not usuario_val:
+            for k, v in row.items():
+                if any(x in str(v).lower() for x in ['orientacion_legal', 'psicologo', 'gestor']):
+                    usuario_val = str(v)
+                    break
 
-        registros.append({
-            'Fecha': info_main['Fecha'],
-            'Estado': info_main['Estado'],
-            'Municipio': info_main['Municipio'],
-            'ID_Unico': id_unico,
-            'Sexo': sexo,
-            'Rango_Etario': rango_etario,
-            'Discapacidad': discapacidad,
-            'Ponderacion': 1,
-            'Ponderacion_Unica': b.get('unicos ', 1)
-        })
+        tipo_servicio_proteccion = clasificar_servicio_por_usuario(usuario_val)
+
+        sector_raw = str(
+            row.get('Resultado:')
+            or row.get('Sector')
+            or row.get('resultado')
+            or ''
+        ).lower()
+        if (
+            'wash' in sector_raw
+            or 'agua' in sector_raw
+            or 'resultado 1' in sector_raw
+        ):
+            sector = 'WASH'
+        else:
+            sector = 'Protección'
+
+        estado_code = str(
+            row.get('Estado')
+            or row.get('estado')
+            or row.get('group_datos_loc/Estado')
+            or ''
+        ).strip()
+        estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
+
+        muni_code = str(
+            row.get('Municipio')
+            or row.get('municipio')
+            or row.get('group_datos_loc/Municipio')
+            or ''
+        ).strip()
+        muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
+
+        campamento = 'No especificado'
+        for k, v in row.items():
+            if not isinstance(v, (str, int, float, bool)) or v is None:
+                continue
+            k_l = str(k).lower()
+            if 'comunidad' in k_l or 'refugio' in k_l or 'establecimiento' in k_l:
+                val_str = str(v).strip()
+                if val_str and val_str.lower() not in ['none', 'nan', '']:
+                    campamento = val_str
+                    break
+
+        fecha = (
+            row.get('Fecha de la Actividad:')
+            or row.get('Fecha_de_la_Actividad')
+            or row.get('fecha')
+            or row.get('_submission_time')
+        )
+
+        cantidad_envio = 1
+        for k, v in row.items():
+            k_l = str(k).lower()
+            if any(x in k_l for x in ['escriba el número', 'número de', 'numero de', 'num_personas', 'suma_total', 'cantidad', 'tot_pers']):
+                try:
+                    val_num = int(float(v))
+                    if val_num > 0:
+                        cantidad_envio = val_num
+                        break
+                except Exception:
+                    pass
+
+        ind_val = '2.3' if asset_id == 'aD96E3u2eqQUSUTW2EBHjx' else '1.1'
+        encontrado = False
+        for col_i, val_i in row.items():
+            if not isinstance(val_i, (str, int, float, bool)) or val_i is None:
+                continue
+            col_str_l = str(col_i).lower()
+            if 'indicador' in col_str_l or 'actividad' in col_str_l or 'resultado' in col_str_l:
+                txt_ind = str(val_i).lower()
+                for k_ind in MAPA_INDICADORES_AICS.keys():
+                    if k_ind in txt_ind:
+                        ind_val = k_ind.lower()
+                        encontrado = True
+                        break
+                if encontrado:
+                    break
+
+        if not encontrado and asset_id != 'aD96E3u2eqQUSUTW2EBHjx':
+            for k, v in row.items():
+                if isinstance(v, (str, int, float, bool)) and v is not None:
+                    val_str = str(v).lower()
+                    for k_ind in MAPA_INDICADORES_AICS.keys():
+                        if k_ind in val_str:
+                            ind_val = k_ind.lower()
+                            encontrado = True
+                            break
+                    if encontrado:
+                        break
+
+        hombres_envio = 0
+        mujeres_envio = 0
+        for k, v in row.items():
+            k_l = str(k).lower()
+            if ('suma_h' in k_l or 'hombre' in k_l or 'masculino' in k_l) and 'count_' not in k_l:
+                try:
+                    hombres_envio += int(float(v))
+                except Exception:
+                    pass
+            elif ('suma_n' in k_l or 'suma_m' in k_l or 'mujer' in k_l or 'femenino' in k_l) and 'count_' not in k_l:
+                try:
+                    mujeres_envio += int(float(v))
+                except Exception:
+                    pass
+
+        beneficiarios = row.get('group_beneficiario', [])
+        if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
+            for idx, b in enumerate(beneficiarios):
+                if not isinstance(b, dict):
+                    continue
+                cid = ''
+                sexo_val = ''
+                rango_val = ''
+                disc_val = 'No'
+
+                for k, v in b.items():
+                    if not isinstance(v, (str, int, float, bool)) or v is None:
+                        continue
+                    k_str = str(k)
+                    k_lower = k_str.lower()
+                    if 'codigoid' in k_lower or 'documento' in k_lower:
+                        cid = str(v).strip()
+                    elif k_lower == 'sexo' or k_lower.endswith('/sexo'):
+                        sexo_val = str(v).strip()
+                    elif k_lower == 'rango_etario' or k_lower.endswith('/rango_etario') or 'resul_edad' in k_lower:
+                        rango_val = str(v).strip()
+                    elif ('discapacidad' in k_lower or k_lower.endswith('persona_con_discapacidad')) and 'count_' not in k_lower:
+                        disc_val = str(v).strip()
+
+                if not cid:
+                    for k, v in row.items():
+                        if 'codigoid' in str(k).lower():
+                            cid = str(v).strip()
+                            break
+
+                if not sexo_val:
+                    for k, v in b.items():
+                        if isinstance(v, (str, int, float, bool)) and v is not None:
+                            k_l = str(k).lower()
+                            if 'sexo' in k_l and 'id_' not in k_l and 'count_' not in k_l:
+                                sexo_val = str(v).strip()
+                                break
+                if not rango_val:
+                    for k, v in b.items():
+                        if isinstance(v, (str, int, float, bool)) and v is not None:
+                            k_l = str(k).lower()
+                            if ('rango_etario' in k_l or 'edad' in k_l) and 'count_' not in k_l:
+                                rango_val = str(v).strip()
+                                break
+
+                lista_sexos = [s.strip() for s in sexo_val.split(',') if s.strip()]
+                lista_rangos = [r.strip() for r in rango_val.split(',') if r.strip()]
+                max_len = max(len(lista_sexos), len(lista_rangos), 1)
+
+                for sub_i in range(max_len):
+                    s_item = (
+                        lista_sexos[sub_i]
+                        if sub_i < len(lista_sexos)
+                        else (lista_sexos[0] if lista_sexos else 'Mujer')
+                    )
+                    r_item = (
+                        lista_rangos[sub_i]
+                        if sub_i < len(lista_rangos)
+                        else (lista_rangos[0] if lista_rangos else '18 A 49 Años')
+                    )
+
+                    id_unico = (
+                        f'ID_{cid}_{sub_i}'
+                        if cid and cid.lower() not in ['none', '', '0', 'nan']
+                        else (f'ALFA_{case_id_alfa}_{sub_i}' if case_id_alfa else f"ROW_{row.get('_id')}_{idx}_{sub_i}")
+                    )
+
+                    sexo = normalizar_sexo(s_item)
+                    rango_etario = limpiar_texto(r_item)
+                    discapacidad = normalizar_discapacidad(disc_val)
+
+                    registros.append({
+                        '_id': row.get('_id'),
+                        'Fecha': fecha,
+                        'Estado': estado,
+                        'Municipio': muni,
+                        'Campamento': campamento,
+                        'Sector': sector,
+                        'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
+                        'ID_Unico': id_unico,
+                        'Sexo': sexo,
+                        'Rango_Etario': rango_etario,
+                        'Discapacidad': discapacidad,
+                        'Indicador': ind_val,
+                        'Ponderacion': 1,
+                        'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
+                    })
+        else:
+            id_base = f'ALFA_{case_id_alfa}' if case_id_alfa else f"ROW_{row.get('_id')}"
+            if hombres_envio > 0 or mujeres_envio > 0:
+                if hombres_envio > 0:
+                    registros.append({
+                        '_id': row.get('_id'),
+                        'Fecha': fecha,
+                        'Estado': estado,
+                        'Municipio': muni,
+                        'Campamento': campamento,
+                        'Sector': sector,
+                        'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
+                        'ID_Unico': f'{id_base}_H',
+                        'Sexo': 'Hombre',
+                        'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
+                        'Discapacidad': 'No',
+                        'Indicador': ind_val,
+                        'Ponderacion': hombres_envio,
+                        'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
+                    })
+                if mujeres_envio > 0:
+                    registros.append({
+                        '_id': row.get('_id'),
+                        'Fecha': fecha,
+                        'Estado': estado,
+                        'Municipio': muni,
+                        'Campamento': campamento,
+                        'Sector': sector,
+                        'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
+                        'ID_Unico': f'{id_base}_M',
+                        'Sexo': 'Mujer',
+                        'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
+                        'Discapacidad': 'No',
+                        'Indicador': ind_val,
+                        'Ponderacion': mujeres_envio,
+                        'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
+                    })
+            else:
+                registros.append({
+                    '_id': row.get('_id'),
+                    'Fecha': fecha,
+                    'Estado': estado,
+                    'Municipio': muni,
+                    'Campamento': campamento,
+                    'Sector': sector,
+                    'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
+                    'ID_Unico': f'{id_base}_0',
+                    'Sexo': 'Mujer',
+                    'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
+                    'Discapacidad': 'No',
+                    'Indicador': ind_val,
+                    'Ponderacion': cantidad_envio,
+                    'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
+                })
 
     df = pd.DataFrame(registros)
     if not df.empty and 'Fecha' in df.columns:
         df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
         df['Mes_Reporte'] = df['Fecha_DT'].apply(
-            lambda x: f'{x.year} - {MESES_ES.get(x.month, "")}' if pd.notnull(x) else 'Sin Fecha'
+            lambda x: (
+                f'{x.year} - {MESES_ES.get(x.month, "")}'
+                if pd.notnull(x)
+                else 'Sin Fecha'
+            )
         )
     else:
         df['Mes_Reporte'] = 'Sin Fecha'
     return df
 
 
-df_raw = cargar_datos_siga_excel()
+TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
+ASSET_ID_WASH = 'aBiwjqr5xDBwCMy9uTHDac'
+ASSET_ID_PROTECCION = 'aD96E3u2eqQUSUTW2EBHjx'
+
+df_wash = cargar_datos_kobo_api(ASSET_ID_WASH, TOKEN_AICS)
+df_prot_kobo = cargar_datos_kobo_api(ASSET_ID_PROTECCION, TOKEN_AICS)
+
+df_raw = pd.concat([df_wash, df_prot_kobo], ignore_index=True) if not df_prot_kobo.empty else df_wash
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -259,13 +571,13 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
 st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
-    st.warning('⚠ No se pudo cargar el archivo Excel del SIGA en el repositorio.')
+    st.warning('⚠ No se pudieron cargar datos desde la API de KoboToolbox.')
     st.stop()
 
 meses_disp = ['Todos'] + sorted([m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha'])
 mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp)
 
-sexo_disp = ['Todos', 'Hombre', 'Mujer']
+sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
 sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp)
 
 rango_disp = ['Todos'] + sorted(df_raw['Rango_Etario'].unique().tolist())
@@ -280,34 +592,37 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# CÁLCULOS EXACTOS DE MÉTRICAS (SIGA)
+# MÉTRICAS CLAVE
 # -----------------------------------------------------------------------------
 total_servicios = int(df_filtered['Ponderacion'].sum())
 df_unicos = df_filtered.drop_duplicates(subset=['ID_Unico'])
 total_unicos = int(df_unicos['Ponderacion'].sum())
-pct_meta = (total_unicos / META_PARTICIPANTES_UNICOS) * 100 if META_PARTICIPANTES_UNICOS > 0 else 0
+pct_meta = (
+    (total_unicos / META_PARTICIPANTES_UNICOS) * 100
+    if META_PARTICIPANTES_UNICOS > 0
+    else 0
+)
 
 conteo_sexo = df_unicos.groupby('Sexo')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
 total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
 
 conteo_disc = df_unicos.groupby('Discapacidad')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
-total_discapacidad = int(conteo_disc.get('Sí', 3))
-
-# -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE EN TABLERO
-# -----------------------------------------------------------------------------
-st.subheader('Desglose General - Formulario SIGA (WASH y Asistencia)')
+total_discapacidad = int(conteo_disc.get('Sí', 0))
 
 col1, col2, col3 = st.columns(3)
-col1.metric('1. Total de Servicios', f'{total_servicios:,}')
-col2.metric('2. Total Participantes Únicos', f'{total_unicos:,}')
-col3.metric('% Alcance de la Meta (4.906 pers.)', f'{pct_meta:.2f}%', delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}')
+col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
+col2.metric('Participantes Únicos', f'{total_unicos:,}')
+col3.metric(
+    '% Alcance de la Meta (4.906 pers.)',
+    f'{pct_meta:.2f}%',
+    delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
+)
 
 col_m, col_h, col_d = st.columns(3)
-col_m.metric('Total Mujeres Únicas', f'{total_mujeres:,}')
-col_h.metric('Total Hombres Únicos', f'{total_hombres:,}')
-col_d.metric('Total Personas con Discapacidad', f'{total_discapacidad:,}')
+col_m.metric('Participantes Únicos: Mujeres', f'{total_mujeres:,}')
+col_h.metric('Participantes Únicos: Hombres', f'{total_hombres:,}')
+col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
 
 st.markdown('---')
 
@@ -349,10 +664,11 @@ with g1:
             font=font_layout,
             xaxis_title='Rango Etario',
             yaxis_title='Cantidad',
+            xaxis={'categoryorder': 'array', 'categoryarray': ['0 A 4 Años', '5 A 17 Años', '18 A 49 Años', '50 Años O Más']}
         )
         st.plotly_chart(fig_demo, width='stretch')
     else:
-        st.info('No hay datos disponibles.')
+        st.info('No hay datos disponibles para los filtros seleccionados.')
 
 with g2:
     st.subheader('Participantes Únicos por Municipio')
@@ -373,7 +689,171 @@ with g2:
             color_discrete_sequence=PALETA_COOPI,
         )
         fig_muni.update_traces(textposition='outside')
-        fig_muni.update_layout(showlegend=True, font=font_layout, yaxis_title='Municipio')
+        fig_muni.update_layout(
+            showlegend=True, font=font_layout, yaxis_title='Municipio'
+        )
         st.plotly_chart(fig_muni, width='stretch')
     else:
         st.info('No hay datos disponibles.')
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# MAPA INTERACTIVO
+# -----------------------------------------------------------------------------
+st.subheader('Mapa de Cobertura por Municipios Atendidos')
+
+mapa = folium.Map(
+    location=[10.40, -66.90], zoom_start=10, tiles='OpenStreetMap'
+)
+
+if not df_unicos.empty:
+    muni_resumen = []
+    for (est, mun), grupo in df_unicos.groupby(['Estado', 'Municipio']):
+        tot = int(grupo['Ponderacion'].sum())
+        campamentos = sorted([c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'])
+        campamentos_str = "<br>".join([f"- {c}" for c in campamentos])
+        if not campamentos_str:
+            campamentos_str = "- No especificado"
+            
+        muni_resumen.append({
+            'Estado': est,
+            'Municipio': mun,
+            'Total_Unicos': tot,
+            'Campamentos': campamentos_str
+        })
+        
+    df_mapa = pd.DataFrame(muni_resumen)
+
+    for _, m_row in df_mapa.iterrows():
+        est = m_row['Estado']
+        mun = m_row['Municipio']
+        tot = m_row['Total_Unicos']
+        camps = m_row['Campamentos']
+        coords = COORDENADAS_MUNICIPIOS.get(mun, [10.5, -66.9])
+
+        popup_html = f"""
+        <div style='font-family: Quicksand; font-size: 13px; width: 220px;'>
+            <h4 style='color: {COLOR_AZUL_COOPI}; margin-bottom: 5px;'>{mun}</h4>
+            <b>Estado:</b> {est}<br>
+            <b>Participantes Únicos:</b> <b>{tot}</b><br>
+            <hr style='margin: 5px 0;'>
+            <b>Campamentos / Refugios:</b><br>
+            {camps}
+        </div>
+        """
+        folium.CircleMarker(
+            location=coords,
+            radius=min(tot * 1.5, 25) + 8,
+            popup=folium.Popup(popup_html, max_width=250),
+            color=COLOR_AZUL_COOPI,
+            fill=True,
+            fill_color=COLOR_AZUL_COOPI,
+            fill_opacity=0.8,
+        ).add_to(mapa)
+
+st_folium(mapa, width='stretch', height=450)
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES Y ACTIVIDADES)
+# -----------------------------------------------------------------------------
+st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
+
+todos_inds = []
+for k, nombre in MAPA_INDICADORES_AICS.items():
+    res_val = RESULTADOS_CALCULADOS_USUARIO.get(k, 0)
+    meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
+    alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
+    todos_inds.append({
+        'Codigo': k.upper(),
+        'Indicador': nombre,
+        'Resultado_Mes': res_val,
+        'Meta': meta_val,
+        '% Avance': f'{alc:.1f}%'
+    })
+
+summary_final = pd.DataFrame(todos_inds)
+summary_final = summary_final.sort_values(by='Codigo', ascending=False)
+
+fig_ind = go.Figure()
+fig_ind.add_trace(go.Bar(
+    y=summary_final['Indicador'],
+    x=summary_final['Resultado_Mes'],
+    name='Resultado del Mes',
+    orientation='h',
+    text=summary_final['Resultado_Mes'],
+    textposition='outside',
+    marker_color=COLOR_VERDE_COOPI
+))
+fig_ind.add_trace(go.Bar(
+    y=summary_final['Indicador'],
+    x=summary_final['Meta'],
+    name='Meta Oficial',
+    orientation='h',
+    text=summary_final['Meta'],
+    textposition='outside',
+    marker_color=COLOR_AZUL_COOPI
+))
+
+fig_ind.update_layout(
+    barmode='group',
+    title='Comparativa por Indicador / Actividad: Resultado del Mes vs Meta',
+    font=font_layout,
+    xaxis_title='Cantidad / Porcentaje',
+    yaxis_title='Indicador / Actividad',
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    height=650
+)
+
+st.plotly_chart(fig_ind, width='stretch')
+
+st.markdown('#### Detalle de Avance por Indicador y Actividad')
+st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# CAPÍTULO: RESULTADO DE PROTECCIÓN (Año 2026, Proyecto AICS)
+# -----------------------------------------------------------------------------
+st.subheader('Resultado de protección')
+
+if not df_prot_kobo.empty:
+    df_proteccion_2026 = df_prot_kobo[
+        df_prot_kobo['Fecha_DT'].dt.year == 2026
+    ].copy() if 'Fecha_DT' in df_prot_kobo.columns else df_prot_kobo.copy()
+    
+    if not df_proteccion_2026.empty:
+        total_casos_prot = len(df_proteccion_2026)
+
+        df_servicios_count = (
+            df_proteccion_2026.groupby('Tipo_Servicio_Proteccion', as_index=False)
+            .size()
+            .rename(columns={'size': 'Cantidad_Unicos'})
+        )
+
+        col_p1, col_p2 = st.columns(2)
+        col_p1.metric('Total de Casos', f'{total_casos_prot:,}')
+        col_p2.metric('Participantes Únicos', f'{total_casos_prot:,}')
+
+        fig_prot = px.bar(
+            df_servicios_count,
+            x='Tipo_Servicio_Proteccion',
+            y='Cantidad_Unicos',
+            text='Cantidad_Unicos',
+            color='Tipo_Servicio_Proteccion',
+            color_discrete_sequence=PALETA_COOPI,
+        )
+        fig_prot.update_traces(textposition='outside')
+        fig_prot.update_layout(
+            showlegend=False,
+            font=font_layout,
+            xaxis_title='Tipo de Servicio de Protección',
+            yaxis_title='Cantidad de Casos',
+        )
+        st.plotly_chart(fig_prot, width='stretch')
+    else:
+        st.info('No hay registros de servicios de protección para el año 2026 bajo el proyecto AICS.')
+else:
+    st.info('No hay datos disponibles para el capítulo de protección.')
