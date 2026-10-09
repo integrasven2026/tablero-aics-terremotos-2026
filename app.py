@@ -190,7 +190,15 @@ def cargar_datos_kobo_api(asset_id, token, kobo_url='https://eu.kobotoolbox.org'
                 rango_val = str(b.get('rango_etario', '')).strip()
                 disc_val = str(b.get('Persona con Discapacidad', 'No')).strip()
                 actividad_val = str(b.get('ACTIVIDAD ', 'Actividad 2.3')).strip()
-                unicos_val = b.get('unicos ', 1)
+                
+                unicos_val = 1
+                for k_b, v_b in b.items():
+                    if 'unicos' in k_b.lower():
+                        try:
+                            unicos_val = int(float(v_b))
+                        except Exception:
+                            pass
+                        break
 
                 sexo = normalizar_sexo(sexo_val)
                 rango_etario = limpiar_texto(rango_val)
@@ -259,7 +267,7 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# CÁLCULOS DESDE KOBOTOOLBOX API
+# CÁLCULOS EXACTOS DE MÉTRICAS (KOBOTOOLBOX)
 # -----------------------------------------------------------------------------
 total_servicios = int(df_filtered['Ponderacion'].sum())
 df_unicos = df_filtered[df_filtered['Ponderacion_Unica'] == 1].drop_duplicates(subset=['ID_Unico'])
@@ -274,7 +282,7 @@ df_ninos = df_unicos[df_unicos['Rango_Etario'].isin(['0 A 4 Años', '5 A 17 Año
 total_ninos = int(len(df_ninos))
 
 conteo_disc = df_unicos.groupby('Discapacidad')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
-total_discapacidad = int(conteo_disc.get('Sí', 3))
+total_discapacidad = int(conteo_disc.get('Sí', 0))
 
 # -----------------------------------------------------------------------------
 # MÉTRICAS CLAVE EN TABLERO
@@ -295,7 +303,7 @@ col_d.metric('Total Personas con Discapacidad', f'{total_discapacidad:,}')
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# GRÁFICOS AUTOMATIZADOS
+# GRÁFICOS ACTUALIZADOS Y AUTOMATIZADOS
 # -----------------------------------------------------------------------------
 g1, g2 = st.columns(2)
 
