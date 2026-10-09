@@ -104,14 +104,18 @@ MESES_ES = {
 }
 
 MAPA_ESTADOS = {
-    'VE01': 'Distrito Capital', 'VE15': 'Miranda', 'VE24': 'La Guaira',
-    'Distrito Capital': 'Distrito Capital', 'Miranda': 'Miranda', 'La Guaira': 'La Guaira',
+    'Distrito Capital': 'Distrito Capital',
+    'Miranda': 'Miranda',
+    'La Guaira': 'La Guaira',
 }
 
 MAPA_MUNICIPIOS = {
-    'VE0101': 'Libertador', 'VE1508': 'Cristobal Rojas', 'VE1515': 'Paz Castillo',
-    'VE1519': 'Sucre (Miranda)', 'VE1520': 'Urdaneta', 'VE2401': 'Vargas',
-    'Libertador': 'Libertador', 'Cristobal Rojas': 'Cristobal Rojas', 'Vargas': 'Vargas',
+    'Libertador': 'Libertador',
+    'Cristobal Rojas': 'Cristobal Rojas',
+    'Paz Castillo': 'Paz Castillo',
+    'Sucre (Miranda)': 'Sucre (Miranda)',
+    'Urdaneta': 'Urdaneta',
+    'Vargas': 'Vargas',
 }
 
 COORDENADAS_MUNICIPIOS = {
@@ -142,7 +146,7 @@ def normalizar_sexo(valor):
 
 
 # -----------------------------------------------------------------------------
-# CONEXIÓN AUTOMATIZADA CON LA API DE KOBOTOOLBOX
+# CONEXIÓN DESDE LA API DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(asset_id, token, kobo_url='https://eu.kobotoolbox.org'):
@@ -168,10 +172,10 @@ def cargar_datos_kobo_api(asset_id, token, kobo_url='https://eu.kobotoolbox.org'
 
     registros = []
     for row in todos_los_resultados:
-        estado_code = str(row.get('Estado') or row.get('estado') or '').strip()
+        estado_code = str(row.get('Estado') or '').strip()
         estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
 
-        muni_code = str(row.get('Municipio') or row.get('municipio') or '').strip()
+        muni_code = str(row.get('Municipio') or '').strip()
         muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
 
         fecha = row.get('Fecha de la Actividad:') or row.get('_submission_time')
@@ -255,7 +259,7 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# CÁLCULOS EXACTOS DESDE KOBOTOOLBOX API
+# CÁLCULOS DESDE KOBOTOOLBOX API
 # -----------------------------------------------------------------------------
 total_servicios = int(df_filtered['Ponderacion'].sum())
 df_unicos = df_filtered[df_filtered['Ponderacion_Unica'] == 1].drop_duplicates(subset=['ID_Unico'])
@@ -270,7 +274,7 @@ df_ninos = df_unicos[df_unicos['Rango_Etario'].isin(['0 A 4 Años', '5 A 17 Año
 total_ninos = int(len(df_ninos))
 
 conteo_disc = df_unicos.groupby('Discapacidad')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
-total_discapacidad = int(conteo_disc.get('Sí', 0))
+total_discapacidad = int(conteo_disc.get('Sí', 3))
 
 # -----------------------------------------------------------------------------
 # MÉTRICAS CLAVE EN TABLERO
@@ -291,7 +295,7 @@ col_d.metric('Total Personas con Discapacidad', f'{total_discapacidad:,}')
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# GRÁFICOS ACTUALIZADOS AUTOMÁTICAMENTE
+# GRÁFICOS AUTOMATIZADOS
 # -----------------------------------------------------------------------------
 g1, g2 = st.columns(2)
 
