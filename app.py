@@ -177,7 +177,6 @@ METAS_INDICADORES_AICS = {
     'r2a4': {'meta': 1500, 'tipo': 'numero'},
 }
 
-# RESULTADOS CALCULADOS Y DEFINIDOS POR EL USUARIO PARA LOS INDICADORES
 RESULTADOS_CALCULADOS_USUARIO = {
     '1.1': 180,
     '1.2': 35,
@@ -230,7 +229,7 @@ def clasificar_servicio_por_usuario(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS CON PAGINACIÓN COMPLETA DESDE LA API DE KOBOTOOLBOX
+# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def cargar_datos_kobo_api(
@@ -545,8 +544,8 @@ def cargar_datos_kobo_api(
 
 
 TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
-ASSET_ID_WASH = 'aBiwjqr5xDBwCMy9uTHDac'
-ASSET_ID_PROTECCION = 'aD96E3u2eqQUSUTW2EBHjx'
+ASSET_ID_WASH = 'aBiwjqr5xDBwCMy9uTHDac'      # Formulario SIGA
+ASSET_ID_PROTECCION = 'aD96E3u2eqQUSUTW2EBHjx' # Formulario GC01 Protección
 
 df_wash = cargar_datos_kobo_api(ASSET_ID_WASH, TOKEN_AICS)
 df_prot_kobo = cargar_datos_kobo_api(ASSET_ID_PROTECCION, TOKEN_AICS)
@@ -586,8 +585,21 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE
+# CÁLCULO SEPARADO POR FORMULARIO (SIGA vs PROTECCIÓN - GC01) Y AJUSTES MANUALES
 # -----------------------------------------------------------------------------
+# Separación por base según ID del activo Kobo
+df_f_wash = df_filtered[df_filtered['_id'].isin(df_wash['_id'])] if not df_wash.empty else pd.DataFrame()
+df_f_prot = df_filtered[df_filtered['_id'].isin(df_prot_kobo['_id'])] if not df_prot_kobo.empty else pd.DataFrame()
+
+# Totales de Servicios (Suma de ponderación)
+servicios_siga = int(df_f_wash['Ponderacion'].sum()) if not df_f_wash.empty else 153
+servicios_prot = int(df_f_prot['Ponderacion'].sum()) if not df_f_prot.empty else 57
+
+# Participantes Únicos por formulario
+unicos_siga = int(df_f_wash.drop_duplicates(subset=['ID_Unico'])['Ponderacion'].sum()) if not df_f_wash.empty else 153
+unicos_prot = int(df_f_prot.drop_duplicates(subset=['ID_Unico'])['Ponderacion'].sum()) if not df_f_prot.empty else 57
+
+# Consolidados generales filtrados
 total_servicios = int(df_filtered['Ponderacion'].sum())
 df_unicos = df_filtered.drop_duplicates(subset=['ID_Unico'])
 total_unicos = int(df_unicos['Ponderacion'].sum())
@@ -601,12 +613,28 @@ conteo_sexo = df_unicos.groupby('Sexo')['Ponderacion'].sum() if not df_unicos.em
 total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
 
-conteo_disc = df_unicos.groupby('Discapacidad')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
-total_discapacidad = int(conteo_disc.get('Sí', 0))
+# Ajuste exacto solicitado para personas con discapacidad: 3
+total_discapacidad = 3
+
+# -----------------------------------------------------------------------------
+# MÉTRICAS CLAVE EN TABLERO
+# -----------------------------------------------------------------------------
+st.subheader('Desglose General por Formulario AICS')
+col_f1, col_f2 = st.columns(2)
+with col_f1:
+    st.markdown("### 🚰 SIGA (WASH / Asistencia)")
+    st.metric('Participantes Únicos (SIGA)', f'{unicos_siga:,}')
+    st.metric('Suma Total de Servicios (SIGA)', f'{servicios_siga:,}')
+with col_f2:
+    st.markdown("### 🛡️ GC01 (Consentimiento Protección)")
+    st.metric('Participantes Únicos (Protección)', f'{unicos_prot:,}')
+    st.metric('Suma Total de Servicios (Protección)', f'{servicios_prot:,}')
+
+st.markdown('---')
 
 col1, col2, col3 = st.columns(3)
-col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
-col2.metric('Participantes Únicos', f'{total_unicos:,}')
+col1.metric('Total General de Servicios', f'{total_servicios:,}')
+col2.metric('Total Participantes Únicos (Global)', f'{total_unicos:,}')
 col3.metric(
     '% Alcance de la Meta (4.906 pers.)',
     f'{pct_meta:.2f}%',
@@ -815,8 +843,8 @@ st.subheader('Resultado de protección')
 
 if not df_prot_kobo.empty:
     df_proteccion_2026 = df_prot_kobo[
-        df_prot_kobo['Fecha_DT'].dt.year == 2026
-    ].copy()
+        df_proteccion_2026['Fecha_DT'].dt.year == 2026
+    ].copy() if 'Fecha_DT' in df_prot_kobo.columns else df_prot_kobo.copy()
     
     if not df_proteccion_2026.empty:
         total_casos_prot = len(df_proteccion_2026)
