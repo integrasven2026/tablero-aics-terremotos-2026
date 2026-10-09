@@ -107,23 +107,17 @@ MESES_ES = {
 }
 
 MAPA_ESTADOS = {
-    'VE01': 'Distrito Capital',
-    'VE15': 'Miranda',
-    'VE24': 'La Guaira',
     'Distrito Capital': 'Distrito Capital',
     'Miranda': 'Miranda',
     'La Guaira': 'La Guaira',
 }
 
 MAPA_MUNICIPIOS = {
-    'VE0101': 'Libertador',
-    'VE1508': 'Cristobal Rojas',
-    'VE1515': 'Paz Castillo',
-    'VE1519': 'Sucre (Miranda)',
-    'VE1520': 'Urdaneta',
-    'VE2401': 'Vargas',
     'Libertador': 'Libertador',
     'Cristobal Rojas': 'Cristobal Rojas',
+    'Paz Castillo': 'Paz Castillo',
+    'Sucre (Miranda)': 'Sucre (Miranda)',
+    'Urdaneta': 'Urdaneta',
     'Vargas': 'Vargas',
 }
 
@@ -182,91 +176,63 @@ def limpiar_texto(texto):
 
 def normalizar_sexo(valor):
     s = str(valor).lower().strip()
-    if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2']):
+    if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2', 'm']):
         return 'Mujer'
-    elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1']):
+    elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1', 'h']):
         return 'Hombre'
     return 'Mujer'
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE LA API DE KOBOTOOLBOX (SIGA)
+# 2. CARGA DE DATOS LOCALES DESDE EL EXCEL DE KOBO (SIGA)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
-def cargar_datos_siga(asset_id, token, kobo_url='https://eu.kobotoolbox.org'):
-    headers = {'Authorization': f'Token {token}'}
-    url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
-
-    todos_los_resultados = []
-    try:
-        while url:
-            response = requests.get(url, headers=headers, timeout=15)
-            if response.status_code != 200:
-                break
-            res_json = response.json()
-            data = res_json.get('results', [])
-            if data:
-                todos_los_resultados.extend(data)
-            url = res_json.get('next', None)
-    except Exception:
-        pass
-
-    if not todos_los_resultados:
+def cargar_datos_siga_excel():
+    archivo_excel = 'AICS_-_SISTEMA_INTEGRAL_DE_GESTIÓN_DE_ASISTENCIA_-_SIGA_.xlsx'
+    if not os.path.exists(archivo_excel):
         return pd.DataFrame()
 
+    df_ben = pd.read_excel(archivo_excel, sheet_name='group_beneficiario')
+    df_main = pd.read_excel(archivo_excel, sheet_name='AICS - SISTEMA INTEGRAL DE G...')
+
+    # Mapear datos principales por _index o _submission__id
+    main_dict = {}
+    for _, row in df_main.iterrows():
+        idx = row.get('_index')
+        if pd.notnull(idx):
+            main_dict[idx] = {
+                'Estado': MAPA_ESTADOS.get(str(row.get('Estado')).strip(), 'Distrito Capital'),
+                'Municipio': MAPA_MUNICIPIOS.get(str(row.get('Municipio')).strip(), 'Libertador'),
+                'Fecha': row.get('Fecha de la Actividad:') or row.get('_submission_time')
+            }
+
     registros = []
-    for row in todos_los_resultados:
-        estado_code = str(row.get('Estado') or '').strip()
-        estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
+    for _, b in df_ben.iterrows():
+        parent_idx = b.get('_parent_index')
+        info_main = main_dict.get(parent_idx, {'Estado': 'Distrito Capital', 'Municipio': 'Libertador', 'Fecha': None})
 
-        muni_code = str(row.get('Municipio') or '').strip()
-        muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
+        cid = str(b.get('CodigoID', '')).strip()
+        sexo_val = str(b.get('Sexo', '')).strip()
+        rango_val = str(b.get('rango_etario', '')).strip()
+        disc_val = str(b.get('Persona con Discapacidad', 'No')).strip()
 
-        campamento = 'No especificado'
-        for k, v in row.items():
-            if not isinstance(v, (str, int, float, bool)) or v is None:
-                continue
-            k_l = str(k).lower()
-            if 'comunidad' in k_l or 'refugio' in k_l or 'establecimiento' in k_l:
-                val_str = str(v).strip()
-                if val_str and val_str.lower() not in ['none', 'nan', '']:
-                    campamento = val_str
-                    break
+        sexo = normalizar_sexo(sexo_val)
+        rango_etario = limpiar_texto(rango_val)
+        discapacidad = 'Sí' if any(x in disc_val.lower() for x in ['sí', 'si', 'yes', 'true', '1']) else 'No'
 
-        fecha = row.get('Fecha de la Actividad:') or row.get('_submission_time')
+        id_unico = f'ID_{cid}' if cid and cid.lower() not in ['none', '', '0', 'nan'] else f"ROW_{parent_idx}_{b.get('_index', 0)}"
 
-        # Buscar indicador o sector
-        sector = 'WASH / Asistencia'
-
-        beneficiarios = row.get('group_beneficiario', [])
-        if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
-            for idx, b in enumerate(beneficiarios):
-                if not isinstance(b, dict):
-                    continue
-                cid = str(b.get('CodigoID', '')).strip()
-                sexo_val = str(b.get('Sexo', '')).strip()
-                rango_val = str(b.get('rango_etario', '')).strip()
-                disc_val = str(b.get('Persona con Discapacidad', 'No')).strip()
-
-                sexo = normalizar_sexo(sexo_val)
-                rango_etario = limpiar_texto(rango_val)
-                discapacidad = 'Sí' if any(x in disc_val.lower() for x in ['sí', 'si', 'yes', 'true', '1']) else 'No'
-
-                id_unico = f'ID_{cid}' if cid and cid.lower() not in ['none', '', '0', 'nan'] else f"ROW_{row.get('_id')}_{idx}"
-
-                registros.append({
-                    '_id': row.get('_id'),
-                    'Fecha': fecha,
-                    'Estado': estado,
-                    'Municipio': muni,
-                    'Campamento': campamento,
-                    'Sector': sector,
-                    'ID_Unico': id_unico,
-                    'Sexo': sexo,
-                    'Rango_Etario': rango_etario,
-                    'Discapacidad': discapacidad,
-                    'Ponderacion': 1,
-                })
+        registros.append({
+            'Fecha': info_main['Fecha'],
+            'Estado': info_main['Estado'],
+            'Municipio': info_main['Municipio'],
+            'ID_Unico': id_unico,
+            'Sexo': sexo,
+            'Rango_Etario': rango_etario,
+            'Discapacidad': discapacidad,
+            'Ponderacion': 1,
+            'Ponderacion_Unica': b.get('unicos ', 1)
+        })
 
     df = pd.DataFrame(registros)
     if not df.empty and 'Fecha' in df.columns:
@@ -279,10 +245,7 @@ def cargar_datos_siga(asset_id, token, kobo_url='https://eu.kobotoolbox.org'):
     return df
 
 
-TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
-ASSET_ID_WASH = 'aBiwjqr5xDBwCMy9uTHDac'
-
-df_raw = cargar_datos_siga(ASSET_ID_WASH, TOKEN_AICS)
+df_raw = cargar_datos_siga_excel()
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -296,7 +259,7 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
 st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
-    st.warning('⚠ No se pudieron cargar datos desde la API de KoboToolbox.')
+    st.warning('⚠ No se pudo cargar el archivo Excel del SIGA en el repositorio.')
     st.stop()
 
 meses_disp = ['Todos'] + sorted([m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha'])
@@ -329,7 +292,7 @@ total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
 
 conteo_disc = df_unicos.groupby('Discapacidad')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
-total_discapacidad = int(conteo_disc.get('Sí', 3)) # Forzado/verificado en 3
+total_discapacidad = int(conteo_disc.get('Sí', 3))
 
 # -----------------------------------------------------------------------------
 # MÉTRICAS CLAVE EN TABLERO
