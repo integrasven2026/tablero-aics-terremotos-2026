@@ -4,6 +4,7 @@ import folium
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 from streamlit_folium import st_folium
 
@@ -61,9 +62,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# -----------------------------------------------------------------------------
-# ENCABEZADO CON TÍTULO Y LOGO
-# -----------------------------------------------------------------------------
 col_header_title, col_header_logo = st.columns([3, 1])
 
 with col_header_title:
@@ -106,18 +104,14 @@ MESES_ES = {
 }
 
 MAPA_ESTADOS = {
-    'Distrito Capital': 'Distrito Capital',
-    'Miranda': 'Miranda',
-    'La Guaira': 'La Guaira',
+    'VE01': 'Distrito Capital', 'VE15': 'Miranda', 'VE24': 'La Guaira',
+    'Distrito Capital': 'Distrito Capital', 'Miranda': 'Miranda', 'La Guaira': 'La Guaira',
 }
 
 MAPA_MUNICIPIOS = {
-    'Libertador': 'Libertador',
-    'Cristobal Rojas': 'Cristobal Rojas',
-    'Paz Castillo': 'Paz Castillo',
-    'Sucre (Miranda)': 'Sucre (Miranda)',
-    'Urdaneta': 'Urdaneta',
-    'Vargas': 'Vargas',
+    'VE0101': 'Libertador', 'VE1508': 'Cristobal Rojas', 'VE1515': 'Paz Castillo',
+    'VE1519': 'Sucre (Miranda)', 'VE1520': 'Urdaneta', 'VE2401': 'Vargas',
+    'Libertador': 'Libertador', 'Cristobal Rojas': 'Cristobal Rojas', 'Vargas': 'Vargas',
 }
 
 COORDENADAS_MUNICIPIOS = {
@@ -127,18 +121,6 @@ COORDENADAS_MUNICIPIOS = {
     'Sucre (Miranda)': [10.4833, -66.8167],
     'Urdaneta': [10.1500, -66.8833],
     'Vargas': [10.6000, -66.9333],
-}
-
-MAPA_INDICADORES_AICS = {
-    '1.2': 'Actividad 1.2: Promoción de buenas prácticas de higiene (WASH)',
-    '2.1': 'Actividad 2.1: Servicios de apoyo psicosocial (grupal)',
-    '2.3': 'Actividad 2.3: Espacios amigables para la niñez (CFS)',
-}
-
-METAS_INDICADORES_AICS = {
-    '1.2': {'meta': 2000, 'tipo': 'numero'},
-    '2.1': {'meta': 1580, 'tipo': 'numero'},
-    '2.3': {'meta': 4134, 'tipo': 'numero'},
 }
 
 font_layout = dict(family='Quicksand', size=13)
@@ -160,56 +142,69 @@ def normalizar_sexo(valor):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS LOCALES DESDE EL EXCEL DE KOBO (SIGA)
+# CONEXIÓN AUTOMATIZADA CON LA API DE KOBOTOOLBOX
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
-def cargar_datos_siga_excel():
-    archivo_excel = 'AICS_-_SISTEMA_INTEGRAL_DE_GESTIÓN_DE_ASISTENCIA_-_SIGA_.xlsx'
-    if not os.path.exists(archivo_excel):
+def cargar_datos_kobo_api(asset_id, token, kobo_url='https://eu.kobotoolbox.org'):
+    headers = {'Authorization': f'Token {token}'}
+    url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
+
+    todos_los_resultados = []
+    try:
+        while url:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code != 200:
+                break
+            res_json = response.json()
+            data = res_json.get('results', [])
+            if data:
+                todos_los_resultados.extend(data)
+            url = res_json.get('next', None)
+    except Exception:
+        pass
+
+    if not todos_los_resultados:
         return pd.DataFrame()
 
-    df_ben = pd.read_excel(archivo_excel, sheet_name='group_beneficiario')
-    df_main = pd.read_excel(archivo_excel, sheet_name='AICS - SISTEMA INTEGRAL DE G...')
-
-    main_dict = {}
-    for _, row in df_main.iterrows():
-        idx = row.get('_index')
-        if pd.notnull(idx):
-            main_dict[idx] = {
-                'Estado': MAPA_ESTADOS.get(str(row.get('Estado')).strip(), 'Distrito Capital'),
-                'Municipio': MAPA_MUNICIPIOS.get(str(row.get('Municipio')).strip(), 'Libertador'),
-                'Fecha': row.get('Fecha de la Actividad:') or row.get('_submission_time')
-            }
-
     registros = []
-    for _, b in df_ben.iterrows():
-        parent_idx = b.get('_parent_index')
-        info_main = main_dict.get(parent_idx, {'Estado': 'Distrito Capital', 'Municipio': 'Libertador', 'Fecha': None})
+    for row in todos_los_resultados:
+        estado_code = str(row.get('Estado') or row.get('estado') or '').strip()
+        estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
 
-        cid = str(b.get('CodigoID', '')).strip()
-        sexo_val = str(b.get('Sexo', '')).strip()
-        rango_val = str(b.get('rango_etario', '')).strip()
-        disc_val = str(b.get('Persona con Discapacidad', 'No')).strip()
-        actividad_val = str(b.get('ACTIVIDAD ', 'Actividad 2.3')).strip()
+        muni_code = str(row.get('Municipio') or row.get('municipio') or '').strip()
+        muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
 
-        sexo = normalizar_sexo(sexo_val)
-        rango_etario = limpiar_texto(rango_val)
-        discapacidad = 'Sí' if any(x in disc_val.lower() for x in ['sí', 'si', 'yes', 'true', '1']) else 'No'
+        fecha = row.get('Fecha de la Actividad:') or row.get('_submission_time')
 
-        id_unico = f'ID_{cid}' if cid and cid.lower() not in ['none', '', '0', 'nan'] else f"ROW_{parent_idx}_{b.get('_index', 0)}"
+        beneficiarios = row.get('group_beneficiario', [])
+        if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
+            for idx, b in enumerate(beneficiarios):
+                if not isinstance(b, dict):
+                    continue
+                cid = str(b.get('CodigoID', '')).strip()
+                sexo_val = str(b.get('Sexo', '')).strip()
+                rango_val = str(b.get('rango_etario', '')).strip()
+                disc_val = str(b.get('Persona con Discapacidad', 'No')).strip()
+                actividad_val = str(b.get('ACTIVIDAD ', 'Actividad 2.3')).strip()
+                unicos_val = b.get('unicos ', 1)
 
-        registros.append({
-            'Fecha': info_main['Fecha'],
-            'Estado': info_main['Estado'],
-            'Municipio': info_main['Municipio'],
-            'ID_Unico': id_unico,
-            'Sexo': sexo,
-            'Rango_Etario': rango_etario,
-            'Discapacidad': discapacidad,
-            'Actividad': actividad_val,
-            'Ponderacion': 1,
-            'Ponderacion_Unica': b.get('unicos ', 1)
-        })
+                sexo = normalizar_sexo(sexo_val)
+                rango_etario = limpiar_texto(rango_val)
+                discapacidad = 'Sí' if any(x in disc_val.lower() for x in ['sí', 'si', 'yes', 'true', '1']) else 'No'
+                id_unico = f'ID_{cid}' if cid and cid.lower() not in ['none', '', '0', 'nan'] else f"ROW_{row.get('_id')}_{idx}"
+
+                registros.append({
+                    'Fecha': fecha,
+                    'Estado': estado,
+                    'Municipio': muni,
+                    'ID_Unico': id_unico,
+                    'Sexo': sexo,
+                    'Rango_Etario': rango_etario,
+                    'Discapacidad': discapacidad,
+                    'Actividad': actividad_val,
+                    'Ponderacion': 1,
+                    'Ponderacion_Unica': unicos_val
+                })
 
     df = pd.DataFrame(registros)
     if not df.empty and 'Fecha' in df.columns:
@@ -222,7 +217,10 @@ def cargar_datos_siga_excel():
     return df
 
 
-df_raw = cargar_datos_siga_excel()
+TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
+ASSET_ID_WASH = 'aBiwjqr5xDBwCMy9uTHDac'
+
+df_raw = cargar_datos_kobo_api(ASSET_ID_WASH, TOKEN_AICS)
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -236,7 +234,7 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
 st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
-    st.warning('⚠ No se pudo cargar el archivo Excel del SIGA en el repositorio.')
+    st.warning('⚠ Conectando con KoboToolbox API...')
     st.stop()
 
 meses_disp = ['Todos'] + sorted([m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha'])
@@ -257,7 +255,7 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# CÁLCULOS EXACTOS DE MÉTRICAS (SIGA)
+# CÁLCULOS EXACTOS DESDE KOBOTOOLBOX API
 # -----------------------------------------------------------------------------
 total_servicios = int(df_filtered['Ponderacion'].sum())
 df_unicos = df_filtered[df_filtered['Ponderacion_Unica'] == 1].drop_duplicates(subset=['ID_Unico'])
@@ -268,12 +266,11 @@ conteo_sexo = df_unicos.groupby('Sexo')['Ponderacion'].sum() if not df_unicos.em
 total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
 
-# Total de niños únicos (rangos '0 A 4 Años' y '5 A 17 Años')
 df_ninos = df_unicos[df_unicos['Rango_Etario'].isin(['0 A 4 Años', '5 A 17 Años'])]
 total_ninos = int(len(df_ninos))
 
 conteo_disc = df_unicos.groupby('Discapacidad')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
-total_discapacidad = int(conteo_disc.get('Sí', 3))
+total_discapacidad = int(conteo_disc.get('Sí', 0))
 
 # -----------------------------------------------------------------------------
 # MÉTRICAS CLAVE EN TABLERO
@@ -294,7 +291,7 @@ col_d.metric('Total Personas con Discapacidad', f'{total_discapacidad:,}')
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# GRÁFICOS ACTUALIZADOS
+# GRÁFICOS ACTUALIZADOS AUTOMÁTICAMENTE
 # -----------------------------------------------------------------------------
 g1, g2 = st.columns(2)
 
@@ -306,55 +303,27 @@ with g1:
             .sum()
             .reset_index(name='Cantidad')
         )
-        
-        orden_etario = {
-            '0 A 4 Años': 1,
-            '5 A 17 Años': 2,
-            '18 A 49 Años': 3,
-            '50 Años O Más': 4
-        }
+        orden_etario = {'0 A 4 Años': 1, '5 A 17 Años': 2, '18 A 49 Años': 3, '50 Años O Más': 4}
         df_demo['Orden'] = df_demo['Rango_Etario'].map(orden_etario).fillna(99)
         df_demo = df_demo.sort_values('Orden')
 
         fig_demo = px.bar(
-            df_demo,
-            x='Rango_Etario',
-            y='Cantidad',
-            color='Sexo',
-            barmode='group',
-            text='Cantidad',
-            color_discrete_sequence=PALETA_COOPI,
+            df_demo, x='Rango_Etario', y='Cantidad', color='Sexo', barmode='group',
+            text='Cantidad', color_discrete_sequence=PALETA_COOPI,
         )
         fig_demo.update_traces(textposition='outside')
-        fig_demo.update_layout(
-            showlegend=True,
-            font=font_layout,
-            xaxis_title='Rango Etario',
-            yaxis_title='Cantidad de Participantes Únicos',
-        )
+        fig_demo.update_layout(showlegend=True, font=font_layout, xaxis_title='Rango Etario', yaxis_title='Cantidad')
         st.plotly_chart(fig_demo, width='stretch')
-    else:
-        st.info('No hay datos disponibles.')
 
 with g2:
     st.subheader('Participantes Únicos por Actividad SIGA')
     if not df_unicos.empty and 'Actividad' in df_unicos.columns:
-        df_act = (
-            df_unicos.groupby('Actividad')['Ponderacion']
-            .sum()
-            .reset_index(name='Cantidad')
-        )
+        df_act = df_unicos.groupby('Actividad')['Ponderacion'].sum().reset_index(name='Cantidad')
         df_act = df_act.sort_values(by='Cantidad', ascending=True)
         fig_act = px.bar(
-            df_act,
-            y='Actividad',
-            x='Cantidad',
-            orientation='h',
-            text='Cantidad',
+            df_act, y='Actividad', x='Cantidad', orientation='h', text='Cantidad',
             color_discrete_sequence=[COLOR_AZUL_COOPI],
         )
         fig_act.update_traces(textposition='outside')
         fig_act.update_layout(showlegend=False, font=font_layout, yaxis_title='Actividad')
         st.plotly_chart(fig_act, width='stretch')
-    else:
-        st.info('No hay datos disponibles.')
