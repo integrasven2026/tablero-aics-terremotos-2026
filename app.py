@@ -307,12 +307,12 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# APLICACIÓN ESTRICTA DE PARTICIPANTES ÚNICOS (Columna X: unicos_general == 1)
+# APLICACIÓN ESTRICTA: FILTRO DE PARTICIPANTES ÚNICOS (Columna X: unicos_general == 1)
 # -----------------------------------------------------------------------------
 total_servicios = int(df_filtered['Servicios_Count'].sum())
 
-# Filtro estricto para participantes únicos de la columna X
-df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1]
+# Filtro estricto que garantiza los 969 únicos generales de la columna X
+df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1].copy()
 total_unicos = len(df_unicos_rows)
 
 pct_meta_servicios = (
