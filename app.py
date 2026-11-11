@@ -98,7 +98,7 @@ with col_header_logo:
 
 st.markdown('---')
 
-# META OFICIAL DEL PROYECTO (4,800 participantes impactados por servicios)
+# META OFICIAL DEL PROYECTO
 META_PARTICIPANTES_SERVICIOS = 4800
 META_PARTICIPANTES_UNICOS = 969
 
@@ -207,6 +207,8 @@ def normalizar_sexo(valor):
         return 'Mujer'
     elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1', 'h']):
         return 'Hombre'
+    elif any(x in s for x in ['otro', 'other', '3', 'o']):
+        return 'Otro'
     return 'Otro'
 
 
@@ -302,18 +304,14 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
         )
         id_unico = f'ID_{codigo_id}'
 
-        # Uso explícito de la columna H (índice 7) para Fecha de Nacimiento / edad auxiliar y Columna K (índice 10) para Sexo
-        val_col_k = (
-            row.iloc[10]
-            if len(row) > 10
-            else (row.get('Sexo') or row.get('sexo') or 'Mujer')
-        )
+        # Columna K (índice 10) para el Sexo exacto
+        val_col_k = row.iloc[10] if len(row) > 10 else 'Mujer'
         sexo = normalizar_sexo(val_col_k)
 
         rango_etario = limpiar_texto(row.get('rango_etario') or '18 a 49 años')
-        
-        # Columna N (índice 13) o campos asociados para discapacidad / condición
-        val_col_n = row.iloc[13] if len(row) > 13 else (row.get('Persona con Discapacidad') or row.get('CONDICION') or 'No')
+
+        # Columna N (índice 13) para Discapacidad exacta
+        val_col_n = row.iloc[13] if len(row) > 13 else 'No'
         discapacidad = normalizar_discapacidad(val_col_n)
 
         ind_val_raw = str(
@@ -456,9 +454,10 @@ col3.metric(
     delta=f'{total_servicios:,} / {META_PARTICIPANTES_SERVICIOS:,}',
 )
 
-col_m, col_h, col_d = st.columns(3)
+col_m, col_h, col_o, col_d = st.columns(4)
 col_m.metric('Participantes Únicos: Mujeres', f'{total_mujeres:,}')
 col_h.metric('Participantes Únicos: Hombres', f'{total_hombres:,}')
+col_o.metric('Participantes Únicos: Otro', f'{total_otro:,}')
 col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
 
 st.markdown('---')
