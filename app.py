@@ -4,7 +4,6 @@ import folium
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import requests
 import streamlit as st
 from streamlit_folium import st_folium
 
@@ -229,310 +228,68 @@ def clasificar_servicio_por_usuario(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS CON PAGINACIÓN COMPLETA DESDE LA API DE KOBOTOOLBOX
+# 2. CARGA DE DATOS DESDE LA BASE DE EXCEL (Hoja group_beneficiario)
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=3600)
-def cargar_datos_kobo_api(
-    asset_id, token, kobo_url='https://eu.kobotoolbox.org'
-):
-    headers = {'Authorization': f'Token {token}'}
-    url = f'{kobo_url}/api/v2/assets/{asset_id}/data.json'
-
-    todos_los_resultados = []
+@st.cache_data
+def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
     try:
-        while url:
-            response = requests.get(url, headers=headers, timeout=15)
-            if response.status_code != 200:
-                break
-            res_json = response.json()
-            data = res_json.get('results', [])
-            if data:
-                todos_los_resultados.extend(data)
-            url = res_json.get('next', None)
-    except Exception:
-        pass
-
-    if not todos_los_resultados:
+        xls = pd.ExcelFile(excel_path)
+        sheet_name = 'group_beneficiario' if 'group_beneficiario' in xls.sheet_names else xls.sheet_names[0]
+        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name)
+    except Exception as e:
+        st.error(f'Error al cargar el archivo Excel: {e}')
         return pd.DataFrame()
 
     registros = []
-    for row in todos_los_resultados:
-        proyecto_val = ''
-        for k, v in row.items():
-            k_lower = str(k).lower()
-            if k_lower == 'proyecto' or k_lower.endswith('/proyecto'):
-                proyecto_val = str(v).strip().upper()
-                break
+    for idx, row in df_raw.iterrows():
+        # Extracción y limpieza de campos clave
+        proyecto = str(row.get('proyecto', 'AICS')).strip().upper()
+        if proyecto and proyecto != 'AICS' and proyecto != 'NAN':
+            pass  # Permitir o filtrar si es necesario
 
-        if proyecto_val and proyecto_val != 'AICS':
-            continue
+        fecha = row.get('Fecha') or row.get('fecha') or row.get('_submission_time') or '2026-11-01'
+        
+        estado_raw = str(row.get('Estado') or row.get('estado') or 'Distrito Capital').strip()
+        estado = MAPA_ESTADOS.get(estado_raw, estado_raw or 'Distrito Capital')
 
-        meta_alfa = row.get('group_metadatos_alfa', {})
-        case_id_alfa = ''
-        if isinstance(meta_alfa, dict):
-            case_id_alfa = str(meta_alfa.get('case_id', '')).strip()
-        elif isinstance(meta_alfa, list) and len(meta_alfa) > 0:
-            case_id_alfa = str(meta_alfa[0].get('case_id', '')).strip()
+        muni_raw = str(row.get('Municipio') or row.get('municipio') or 'Libertador').strip()
+        muni = MAPA_MUNICIPIOS.get(muni_raw, muni_raw or 'Libertador')
 
-        usuario_val = ''
-        for k, v in row.items():
-            k_l = str(k).lower()
-            if ('user' in k_l or 'prof' in k_l) and ('intro' in k_l or 'group_intro' in k_l):
-                usuario_val = str(v)
-                break
-        if not usuario_val:
-            for k, v in row.items():
-                if any(x in str(v).lower() for x in ['orientacion_legal', 'psicologo', 'gestor']):
-                    usuario_val = str(v)
-                    break
+        campamento = limpiar_texto(row.get('Campamento') or row.get('comunidad') or row.get('refugio') or 'No especificado')
 
-        tipo_servicio_proteccion = clasificar_servicio_por_usuario(usuario_val)
+        sector_raw = str(row.get('Sector') or row.get('resultado') or 'WASH').lower()
+        sector = 'WASH' if ('wash' in sector_raw or 'agua' in sector_raw or '1' in sector_raw) else 'Protección'
 
-        sector_raw = str(
-            row.get('Resultado:')
-            or row.get('Sector')
-            or row.get('resultado')
-            or ''
-        ).lower()
-        if (
-            'wash' in sector_raw
-            or 'agua' in sector_raw
-            or 'resultado 1' in sector_raw
-        ):
-            sector = 'WASH'
-        else:
-            sector = 'Protección'
+        tipo_serv = clasificar_servicio_por_usuario(row.get('Tipo_Servicio_Proteccion') or row.get('usuario') or '')
 
-        estado_code = str(
-            row.get('Estado')
-            or row.get('estado')
-            or row.get('group_datos_loc/Estado')
-            or ''
-        ).strip()
-        estado = MAPA_ESTADOS.get(estado_code, estado_code or 'Distrito Capital')
+        # Identificador único basado en codigoid
+        codigo_id = str(row.get('codigoid') or row.get('ID_Unico') or f'ROW_{idx}').strip()
+        id_unico = f'ID_{codigo_id}' if codigo_id and codigo_id.lower() not in ['none', 'nan', ''] else f'ROW_{idx}'
 
-        muni_code = str(
-            row.get('Municipio')
-            or row.get('municipio')
-            or row.get('group_datos_loc/Municipio')
-            or ''
-        ).strip()
-        muni = MAPA_MUNICIPIOS.get(muni_code, muni_code or 'Libertador')
+        sexo = normalizar_sexo(row.get('Sexo') or row.get('sexo') or 'Mujer')
+        rango_etario = limpiar_texto(row.get('Rango_Etario') or row.get('rango_etario') or '18 A 49 Años')
+        discapacidad = normalizar_discapacidad(row.get('Discapacidad') or row.get('persona_con_discapacidad') or 'No')
 
-        campamento = 'No especificado'
-        for k, v in row.items():
-            if not isinstance(v, (str, int, float, bool)) or v is None:
-                continue
-            k_l = str(k).lower()
-            if 'comunidad' in k_l or 'refugio' in k_l or 'establecimiento' in k_l:
-                val_str = str(v).strip()
-                if val_str and val_str.lower() not in ['none', 'nan', '']:
-                    campamento = val_str
-                    break
+        ind_val = str(row.get('Indicador') or row.get('indicador') or '1.1').strip().lower()
+        if ind_val not in MAPA_INDICADORES_AICS:
+            ind_val = '1.1'
 
-        fecha = (
-            row.get('Fecha de la Actividad:')
-            or row.get('Fecha_de_la_Actividad')
-            or row.get('fecha')
-            or row.get('_submission_time')
-        )
-
-        cantidad_envio = 1
-        for k, v in row.items():
-            k_l = str(k).lower()
-            if any(x in k_l for x in ['escriba el número', 'número de', 'numero de', 'num_personas', 'suma_total', 'cantidad', 'tot_pers']):
-                try:
-                    val_num = int(float(v))
-                    if val_num > 0:
-                        cantidad_envio = val_num
-                        break
-                except Exception:
-                    pass
-
-        ind_val = '2.3' if asset_id == 'aD96E3u2eqQUSUTW2EBHjx' else '1.1'
-        encontrado = False
-        for col_i, val_i in row.items():
-            if not isinstance(val_i, (str, int, float, bool)) or val_i is None:
-                continue
-            col_str_l = str(col_i).lower()
-            if 'indicador' in col_str_l or 'actividad' in col_str_l or 'resultado' in col_str_l:
-                txt_ind = str(val_i).lower()
-                for k_ind in MAPA_INDICADORES_AICS.keys():
-                    if k_ind in txt_ind:
-                        ind_val = k_ind.lower()
-                        encontrado = True
-                        break
-                if encontrado:
-                    break
-
-        if not encontrado and asset_id != 'aD96E3u2eqQUSUTW2EBHjx':
-            for k, v in row.items():
-                if isinstance(v, (str, int, float, bool)) and v is not None:
-                    val_str = str(v).lower()
-                    for k_ind in MAPA_INDICADORES_AICS.keys():
-                        if k_ind in val_str:
-                            ind_val = k_ind.lower()
-                            encontrado = True
-                            break
-                    if encontrado:
-                        break
-
-        hombres_envio = 0
-        mujeres_envio = 0
-        for k, v in row.items():
-            k_l = str(k).lower()
-            if ('suma_h' in k_l or 'hombre' in k_l or 'masculino' in k_l) and 'count_' not in k_l:
-                try:
-                    hombres_envio += int(float(v))
-                except Exception:
-                    pass
-            elif ('suma_n' in k_l or 'suma_m' in k_l or 'mujer' in k_l or 'femenino' in k_l) and 'count_' not in k_l:
-                try:
-                    mujeres_envio += int(float(v))
-                except Exception:
-                    pass
-
-        beneficiarios = row.get('group_beneficiario', [])
-        if isinstance(beneficiarios, list) and len(beneficiarios) > 0:
-            for idx, b in enumerate(beneficiarios):
-                if not isinstance(b, dict):
-                    continue
-                cid = ''
-                sexo_val = ''
-                rango_val = ''
-                disc_val = 'No'
-
-                for k, v in b.items():
-                    if not isinstance(v, (str, int, float, bool)) or v is None:
-                        continue
-                    k_str = str(k)
-                    k_lower = k_str.lower()
-                    if 'codigoid' in k_lower or 'documento' in k_lower:
-                        cid = str(v).strip()
-                    elif k_lower == 'sexo' or k_lower.endswith('/sexo'):
-                        sexo_val = str(v).strip()
-                    elif k_lower == 'rango_etario' or k_lower.endswith('/rango_etario') or 'resul_edad' in k_lower:
-                        rango_val = str(v).strip()
-                    elif ('discapacidad' in k_lower or k_lower.endswith('persona_con_discapacidad')) and 'count_' not in k_lower:
-                        disc_val = str(v).strip()
-
-                if not cid:
-                    for k, v in row.items():
-                        if 'codigoid' in str(k).lower():
-                            cid = str(v).strip()
-                            break
-
-                if not sexo_val:
-                    for k, v in b.items():
-                        if isinstance(v, (str, int, float, bool)) and v is not None:
-                            k_l = str(k).lower()
-                            if 'sexo' in k_l and 'id_' not in k_l and 'count_' not in k_l:
-                                sexo_val = str(v).strip()
-                                break
-                if not rango_val:
-                    for k, v in b.items():
-                        if isinstance(v, (str, int, float, bool)) and v is not None:
-                            k_l = str(k).lower()
-                            if ('rango_etario' in k_l or 'edad' in k_l) and 'count_' not in k_l:
-                                rango_val = str(v).strip()
-                                break
-
-                lista_sexos = [s.strip() for s in sexo_val.split(',') if s.strip()]
-                lista_rangos = [r.strip() for r in rango_val.split(',') if r.strip()]
-                max_len = max(len(lista_sexos), len(lista_rangos), 1)
-
-                for sub_i in range(max_len):
-                    s_item = (
-                        lista_sexos[sub_i]
-                        if sub_i < len(lista_sexos)
-                        else (lista_sexos[0] if lista_sexos else 'Mujer')
-                    )
-                    r_item = (
-                        lista_rangos[sub_i]
-                        if sub_i < len(lista_rangos)
-                        else (lista_rangos[0] if lista_rangos else '18 A 49 Años')
-                    )
-
-                    id_unico = (
-                        f'ID_{cid}_{sub_i}'
-                        if cid and cid.lower() not in ['none', '', '0', 'nan']
-                        else (f'ALFA_{case_id_alfa}_{sub_i}' if case_id_alfa else f"ROW_{row.get('_id')}_{idx}_{sub_i}")
-                    )
-
-                    sexo = normalizar_sexo(s_item)
-                    rango_etario = limpiar_texto(r_item)
-                    discapacidad = normalizar_discapacidad(disc_val)
-
-                    registros.append({
-                        '_id': row.get('_id'),
-                        'Fecha': fecha,
-                        'Estado': estado,
-                        'Municipio': muni,
-                        'Campamento': campamento,
-                        'Sector': sector,
-                        'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
-                        'ID_Unico': id_unico,
-                        'Sexo': sexo,
-                        'Rango_Etario': rango_etario,
-                        'Discapacidad': discapacidad,
-                        'Indicador': ind_val,
-                        'Ponderacion': 1,
-                        'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
-                    })
-        else:
-            id_base = f'ALFA_{case_id_alfa}' if case_id_alfa else f"ROW_{row.get('_id')}"
-            if hombres_envio > 0 or mujeres_envio > 0:
-                if hombres_envio > 0:
-                    registros.append({
-                        '_id': row.get('_id'),
-                        'Fecha': fecha,
-                        'Estado': estado,
-                        'Municipio': muni,
-                        'Campamento': campamento,
-                        'Sector': sector,
-                        'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
-                        'ID_Unico': f'{id_base}_H',
-                        'Sexo': 'Hombre',
-                        'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
-                        'Discapacidad': 'No',
-                        'Indicador': ind_val,
-                        'Ponderacion': hombres_envio,
-                        'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
-                    })
-                if mujeres_envio > 0:
-                    registros.append({
-                        '_id': row.get('_id'),
-                        'Fecha': fecha,
-                        'Estado': estado,
-                        'Municipio': muni,
-                        'Campamento': campamento,
-                        'Sector': sector,
-                        'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
-                        'ID_Unico': f'{id_base}_M',
-                        'Sexo': 'Mujer',
-                        'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
-                        'Discapacidad': 'No',
-                        'Indicador': ind_val,
-                        'Ponderacion': mujeres_envio,
-                        'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
-                    })
-            else:
-                registros.append({
-                    '_id': row.get('_id'),
-                    'Fecha': fecha,
-                    'Estado': estado,
-                    'Municipio': muni,
-                    'Campamento': campamento,
-                    'Sector': sector,
-                    'Tipo_Servicio_Proteccion': tipo_servicio_proteccion,
-                    'ID_Unico': f'{id_base}_0',
-                    'Sexo': 'Mujer',
-                    'Rango_Etario': '5 A 17 Años' if ind_val == '2.1' else '18 A 49 Años',
-                    'Discapacidad': 'No',
-                    'Indicador': ind_val,
-                    'Ponderacion': cantidad_envio,
-                    'Case_ID': case_id_alfa if case_id_alfa else f"ROW_{row.get('_id')}"
-                })
+        registros.append({
+            '_id': row.get('_id', idx),
+            'Fecha': fecha,
+            'Estado': estado,
+            'Municipio': muni,
+            'Campamento': campamento,
+            'Sector': sector,
+            'Tipo_Servicio_Proteccion': tipo_serv,
+            'ID_Unico': id_unico,
+            'Sexo': sexo,
+            'Rango_Etario': rango_etario,
+            'Discapacidad': discapacidad,
+            'Indicador': ind_val,
+            'Ponderacion': 1,
+            'Case_ID': codigo_id
+        })
 
     df = pd.DataFrame(registros)
     if not df.empty and 'Fecha' in df.columns:
@@ -541,22 +298,17 @@ def cargar_datos_kobo_api(
             lambda x: (
                 f'{x.year} - {MESES_ES.get(x.month, "")}'
                 if pd.notnull(x)
-                else 'Sin Fecha'
+                else '2026 - Noviembre'
             )
         )
     else:
-        df['Mes_Reporte'] = 'Sin Fecha'
+        df['Mes_Reporte'] = '2026 - Noviembre'
     return df
 
 
-TOKEN_AICS = 'eb8497fd084a4fb456a5449e10987a9e341751c1'
-ASSET_ID_WASH = 'aBiwjqr5xDBwCMy9uTHDac'
-ASSET_ID_PROTECCION = 'aD96E3u2eqQUSUTW2EBHjx'
-
-df_wash = cargar_datos_kobo_api(ASSET_ID_WASH, TOKEN_AICS)
-df_prot_kobo = cargar_datos_kobo_api(ASSET_ID_PROTECCION, TOKEN_AICS)
-
-df_raw = pd.concat([df_wash, df_prot_kobo], ignore_index=True) if not df_prot_kobo.empty else df_wash
+df_raw = cargar_datos_excel()
+df_wash = df_raw[df_raw['Sector'] == 'WASH']
+df_prot_kobo = df_raw[df_raw['Sector'] == 'Protección']
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -570,7 +322,7 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
 st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
-    st.warning('⚠ No se pudieron cargar datos desde la API de KoboToolbox.')
+    st.warning('⚠ No se pudieron cargar datos desde el archivo Excel.')
     st.stop()
 
 meses_disp = ['Todos'] + sorted([m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha'])
