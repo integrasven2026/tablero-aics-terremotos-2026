@@ -117,15 +117,6 @@ MESES_ES = {
     12: 'Diciembre',
 }
 
-MAPA_MUNICIPIOS = {
-    'Libertador': 'Libertador',
-    'Cristobal Rojas': 'Cristobal Rojas',
-    'Paz Castillo': 'Paz Castillo',
-    'Sucre (Miranda)': 'Sucre (Miranda)',
-    'Urdaneta': 'Urdaneta',
-    'Vargas': 'Vargas',
-}
-
 COORDENADAS_MUNICIPIOS = {
     'Libertador': [10.5000, -66.9167],
     'Cristobal Rojas': [10.2333, -66.6833],
@@ -211,7 +202,6 @@ def cargar_datos_limpios(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready.xlsx'):
         st.error(f'Error al leer el archivo Excel limpio: {e}')
         return pd.DataFrame()
 
-    # Mapeo y normalización optimizada
     registros = []
     for idx, row in df.iterrows():
         codigo_id = str(row.get('codigo_id') or row.get('codigo') or f'ROW_{idx}').strip()
