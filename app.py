@@ -266,13 +266,12 @@ def cargar_datos_csv(csv_path='beneficiarios_aics_clean.csv'):
         tipo_serv = clasificar_servicio(row.get('group_act.Actividad:') or '')
         id_unico = f'ID_{codigo_id}'
 
-        # Sexo
-        val_sexo = row.get('Sexo') or 'Mujer'
-        s = str(val_sexo).lower().strip()
-        if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2', 'm']):
-            sexo = 'Mujer'
-        elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1', 'h']):
+        # Sexo estricto por coincidencia exacta
+        val_sexo = str(row.get('Sexo') or 'Mujer').strip().title()
+        if 'Hombre' in val_sexo or 'H' == val_sexo:
             sexo = 'Hombre'
+        elif 'Mujer' in val_sexo or 'M' == val_sexo:
+            sexo = 'Mujer'
         else:
             sexo = 'Otro'
 
@@ -281,16 +280,8 @@ def cargar_datos_csv(csv_path='beneficiarios_aics_clean.csv'):
         ).strip().title()
 
         # Discapacidad
-        val_disc = row.get('Persona con Discapacidad') or 'No'
-        d_str = str(val_disc).lower().strip()
-        discapacidad = (
-            'Sí'
-            if any(
-                x in d_str
-                for x in ['sí', 'si', 'yes', 'true', '1', 'persona con discapacidad']
-            )
-            else 'No'
-        )
+        val_disc = str(row.get('Persona con Discapacidad') or 'No').strip().lower()
+        discapacidad = 'Sí' if any(x in val_disc for x in ['sí', 'si', 'yes', 'true', '1']) else 'No'
 
         ind_val_raw = str(
             row.get('ID_indicador') or row.get('group_act.Indicador:') or '1.1'
@@ -335,11 +326,11 @@ def cargar_datos_csv(csv_path='beneficiarios_aics_clean.csv'):
             lambda x: (
                 f'{x.year} - {MESES_ES.get(x.month, "")}'
                 if pd.notnull(x)
-                else '2026 - Noviembre'
+                else 'Todos'
             )
         )
     else:
-        df['Mes_Reporte'] = '2026 - Noviembre'
+        df['Mes_Reporte'] = 'Todos'
     return df
 
 
@@ -372,7 +363,7 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
 st.sidebar.markdown('---')
 
 meses_disp = ['Todos'] + sorted(
-    [m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha']
+    [m for m in df_raw['Mes_Reporte'].unique() if m != 'Todos']
 )
 mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp)
 
