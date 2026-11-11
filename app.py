@@ -117,24 +117,12 @@ MESES_ES = {
     12: 'Diciembre',
 }
 
-MAPA_ESTADOS = {
-    'VE01': 'Distrito Capital',
-    'VE15': 'Miranda',
-    'VE24': 'La Guaira',
-    'Distrito Capital': 'Distrito Capital',
-    'Miranda': 'Miranda',
-    'La Guaira': 'La Guaira',
-}
-
 MAPA_MUNICIPIOS = {
-    'VE0101': 'Libertador',
-    'VE1508': 'Cristobal Rojas',
-    'VE1515': 'Paz Castillo',
-    'VE1519': 'Sucre (Miranda)',
-    'VE1520': 'Urdaneta',
-    'VE2401': 'Vargas',
     'Libertador': 'Libertador',
     'Cristobal Rojas': 'Cristobal Rojas',
+    'Paz Castillo': 'Paz Castillo',
+    'Sucre (Miranda)': 'Sucre (Miranda)',
+    'Urdaneta': 'Urdaneta',
     'Vargas': 'Vargas',
 }
 
@@ -195,33 +183,7 @@ RESULTADOS_CALCULADOS_USUARIO = {
 font_layout = dict(family='Quicksand', size=13)
 
 
-def limpiar_texto(texto):
-    if not texto or str(texto).lower() in ['none', 'nan', '']:
-        return 'No especificado'
-    return str(texto).strip().title()
-
-
-def normalizar_sexo(valor):
-    s = str(valor).lower().strip()
-    if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2', 'm']):
-        return 'Mujer'
-    elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1', 'h']):
-        return 'Hombre'
-    elif any(x in s for x in ['otro', 'other', '3', 'o']):
-        return 'Otro'
-    return 'Otro'
-
-
-def normalizar_discapacidad(valor):
-    s = str(valor).lower().strip()
-    if any(
-        x in s for x in ['sí', 'si', 'yes', 'true', '1', 'persona con discapacidad']
-    ):
-        return 'Sí'
-    return 'No'
-
-
-def clasificar_servicio_por_usuario(val):
+def clasificar_servicio(val):
     s = str(val).lower().strip()
     if 'orientacion_legal' in s or 'abogado' in s:
         return 'Orientación Legal'
@@ -233,130 +195,82 @@ def clasificar_servicio_por_usuario(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE LA BASE DE EXCEL (Hoja group_beneficiario, header=4)
+# 2. CARGA DE DATOS DESDE EL EXCEL LIMPIO
 # -----------------------------------------------------------------------------
 @st.cache_data
-def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
+def cargar_datos_limpios(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready.xlsx'):
     if not os.path.exists(excel_path):
         st.warning(
-            f"⚠️ Archivo '{excel_path}' no encontrado. Súbelo al repositorio en la raíz."
+            f"⚠️ Archivo '{excel_path}' no encontrado. Asegúrate de subirlo a la raíz del repositorio."
         )
         return pd.DataFrame()
 
     try:
-        xls = pd.ExcelFile(excel_path)
-        sheet_name = (
-            'group_beneficiario'
-            if 'group_beneficiario' in xls.sheet_names
-            else xls.sheet_names[0]
-        )
-        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name, header=4)
+        df = pd.read_excel(excel_path, sheet_name='Base_Beneficiarios_Clean')
     except Exception as e:
-        st.error(f'Error al leer el archivo Excel: {e}')
+        st.error(f'Error al leer el archivo Excel limpio: {e}')
         return pd.DataFrame()
 
+    # Mapeo y normalización optimizada
     registros = []
-    for idx, row in df_raw.iterrows():
-        codigo_id = str(
-            row.get('CodigoID') or row.get('CODIGO') or f'ROW_{idx}'
-        ).strip()
+    for idx, row in df.iterrows():
+        codigo_id = str(row.get('codigo_id') or row.get('codigo') or f'ROW_{idx}').strip()
         if not codigo_id or codigo_id.lower() in ['nan', 'none', '']:
             continue
 
-        fecha = (
-            row.get('AICS - SISTEMA INTEGRAL DE G.Fecha de la Actividad:')
-            or row.get('Fecha')
-            or '2026-11-01'
-        )
+        fecha = row.get('fecha_actividad') or '2026-11-01'
+        estado = str(row.get('estado') or 'Distrito Capital').strip().title()
+        muni = str(row.get('municipio') or 'Libertador').strip().title()
+        
+        resultado_raw = str(row.get('resultado') or 'WASH').lower()
+        sector = 'WASH' if ('wash' in resultado_raw or 'agua' in resultado_raw or 'r1' in resultado_raw) else 'Protección'
 
-        estado_raw = str(
-            row.get('AICS - SISTEMA INTEGRAL DE G.Estado')
-            or row.get('Estado')
-            or 'Distrito Capital'
-        ).strip()
-        estado = MAPA_ESTADOS.get(estado_raw, estado_raw or 'Distrito Capital')
+        tipo_serv = clasificar_servicio(row.get('actividad') or '')
+        
+        sexo_raw = str(row.get('sexo') or 'Mujer').strip().title()
+        if sexo_raw in ['Hombre', 'Mujer', 'Otro']:
+            sexo = sexo_raw
+        else:
+            sexo = 'Otro'
 
-        muni_raw = str(
-            row.get('AICS - SISTEMA INTEGRAL DE G.Municipio')
-            or row.get('Municipio')
-            or 'Libertador'
-        ).strip()
-        muni = MAPA_MUNICIPIOS.get(muni_raw, muni_raw or 'Libertador')
+        rango_etario = str(row.get('rango_etario') or '18 a 49 años').strip().title()
+        disc_raw = str(row.get('discapacidad') or 'No').strip().lower()
+        discapacidad = 'Sí' if any(x in disc_raw for x in ['sí', 'si', 'yes', 'true', '1']) else 'No'
 
-        campamento = 'No especificado'
-        resultado_raw = str(
-            row.get('AICS - SISTEMA INTEGRAL DE G.Resultado:')
-            or row.get('Resultado:')
-            or 'WASH'
-        ).lower()
-        sector = (
-            'WASH'
-            if (
-                'wash' in resultado_raw
-                or 'agua' in resultado_raw
-                or 'r1' in resultado_raw
-            )
-            else 'Protección'
-        )
-
-        tipo_serv = clasificar_servicio_por_usuario(
-            row.get('group_act.Actividad:') or ''
-        )
-        id_unico = f'ID_{codigo_id}'
-
-        # Columna K (índice 10) para el Sexo exacto
-        val_col_k = row.iloc[10] if len(row) > 10 else 'Mujer'
-        sexo = normalizar_sexo(val_col_k)
-
-        rango_etario = limpiar_texto(row.get('rango_etario') or '18 a 49 años')
-
-        # Columna N (índice 13) para Discapacidad exacta
-        val_col_n = row.iloc[13] if len(row) > 13 else 'No'
-        discapacidad = normalizar_discapacidad(val_col_n)
-
-        ind_val_raw = str(
-            row.get('ID_indicador')
-            or row.get('group_act.Indicador:')
-            or '1.1'
-        ).strip().lower()
+        ind_raw = str(row.get('indicador') or '1.1').strip().lower()
         ind_val = '1.1'
         for k_ind in MAPA_INDICADORES_AICS.keys():
-            if k_ind in ind_val_raw:
+            if k_ind in ind_raw:
                 ind_val = k_ind
                 break
 
-        # Unicidad general (Columna índice 37)
-        val_unicos_gen = 0
         try:
-            val_col37 = row.iloc[37] if len(row) > 37 else 0
-            val_num = float(val_col37)
-            if val_num == 1.0:
-                val_unicos_gen = 1
-        except Exception:
-            val_unicos_gen = 0
+            val_unicos = int(row.get('unicos_general', 1))
+        except:
+            val_unicos = 1
 
         registros.append({
-            '_id': row.get('_index', idx),
+            '_id': idx,
             'Fecha': fecha,
             'Estado': estado,
             'Municipio': muni,
-            'Campamento': campamento,
+            'Campamento': 'No especificado',
             'Sector': sector,
             'Tipo_Servicio_Proteccion': tipo_serv,
-            'ID_Unico': id_unico,
+            'ID_Unico': f'ID_{codigo_id}',
             'Sexo': sexo,
             'Rango_Etario': rango_etario,
             'Discapacidad': discapacidad,
             'Indicador': ind_val,
             'Servicios_Count': 1,
-            'Unicos_General': val_unicos_gen,
+            'Unicos_General': val_unicos,
             'Case_ID': codigo_id,
         })
 
-    df = pd.DataFrame(registros)
-    if not df.empty and 'Fecha' in df.columns:
-        df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
-        df['Mes_Reporte'] = df['Fecha_DT'].apply(
+    df_res = pd.DataFrame(registros)
+    if not df_res.empty and 'Fecha' in df_res.columns:
+        df_res['Fecha_DT'] = pd.to_datetime(df_res['Fecha'], errors='coerce')
+        df_res['Mes_Reporte'] = df_res['Fecha_DT'].apply(
             lambda x: (
                 f'{x.year} - {MESES_ES.get(x.month, "")}'
                 if pd.notnull(x)
@@ -364,26 +278,18 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
             )
         )
     else:
-        df['Mes_Reporte'] = '2026 - Noviembre'
-    return df
+        df_res['Mes_Reporte'] = '2026 - Noviembre'
+    return df_res
 
 
-df_raw = cargar_datos_excel()
+df_raw = cargar_datos_limpios()
 
 if df_raw.empty:
     st.warning('⚠️ No hay datos disponibles para mostrar en el tablero.')
     st.stop()
 
-df_wash = (
-    df_raw[df_raw['Sector'] == 'WASH']
-    if 'Sector' in df_raw.columns
-    else pd.DataFrame()
-)
-df_prot_kobo = (
-    df_raw[df_raw['Sector'] == 'Protección']
-    if 'Sector' in df_raw.columns
-    else pd.DataFrame()
-)
+df_wash = df_raw[df_raw['Sector'] == 'WASH'] if 'Sector' in df_raw.columns else pd.DataFrame()
+df_prot_kobo = df_raw[df_raw['Sector'] == 'Protección'] if 'Sector' in df_raw.columns else pd.DataFrame()
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -396,9 +302,7 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
 
 st.sidebar.markdown('---')
 
-meses_disp = ['Todos'] + sorted(
-    [m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha']
-)
+meses_disp = ['Todos'] + sorted([m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha'])
 mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp)
 
 sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
@@ -429,20 +333,12 @@ pct_meta_servicios = (
 
 df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1]
 
-conteo_sexo = (
-    df_unicos_rows.groupby('Sexo')['Unicos_General'].sum()
-    if not df_unicos_rows.empty
-    else pd.Series()
-)
+conteo_sexo = df_unicos_rows.groupby('Sexo')['Unicos_General'].sum() if not df_unicos_rows.empty else pd.Series()
 total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
 total_otro = int(conteo_sexo.get('Otro', 0))
 
-conteo_disc = (
-    df_unicos_rows.groupby('Discapacidad')['Unicos_General'].sum()
-    if not df_unicos_rows.empty
-    else pd.Series()
-)
+conteo_disc = df_unicos_rows.groupby('Discapacidad')['Unicos_General'].sum() if not df_unicos_rows.empty else pd.Series()
 total_discapacidad = int(conteo_disc.get('Sí', 0))
 
 col1, col2, col3 = st.columns(3)
@@ -482,9 +378,7 @@ with g1:
             '18 A 49 Años': 3,
             '50 Años O Más': 4,
         }
-        df_demo['Orden'] = (
-            df_demo['Rango_Etario'].str.title().map(orden_etario).fillna(99)
-        )
+        df_demo['Orden'] = df_demo['Rango_Etario'].str.title().map(orden_etario).fillna(99)
         df_demo = df_demo.sort_values('Orden')
 
         fig_demo = px.bar(
@@ -549,9 +443,7 @@ if not df_unicos_rows.empty:
     for (est, mun), grupo in df_unicos_rows.groupby(['Estado', 'Municipio']):
         tot = int(grupo['Unicos_General'].sum())
         campamentos = sorted([
-            c
-            for c in grupo['Campamento'].dropna().unique()
-            if c and c != 'No especificado'
+            c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'
         ])
         campamentos_str = '<br>'.join([f'- {c}' for c in campamentos])
         if not campamentos_str:
@@ -619,28 +511,24 @@ summary_final = pd.DataFrame(todos_inds)
 summary_final = summary_final.sort_values(by='Codigo', ascending=False)
 
 fig_ind = go.Figure()
-fig_ind.add_trace(
-    go.Bar(
-        y=summary_final['Indicador'],
-        x=summary_final['Resultado_Mes'],
-        name='Resultado del Mes',
-        orientation='h',
-        text=summary_final['Resultado_Mes'],
-        textposition='outside',
-        marker_color=COLOR_VERDE_COOPI,
-    )
-)
-fig_ind.add_trace(
-    go.Bar(
-        y=summary_final['Indicador'],
-        x=summary_final['Meta'],
-        name='Meta Oficial',
-        orientation='h',
-        text=summary_final['Meta'],
-        textposition='outside',
-        marker_color=COLOR_AZUL_COOPI,
-    )
-)
+fig_ind.add_trace(go.Bar(
+    y=summary_final['Indicador'],
+    x=summary_final['Resultado_Mes'],
+    name='Resultado del Mes',
+    orientation='h',
+    text=summary_final['Resultado_Mes'],
+    textposition='outside',
+    marker_color=COLOR_VERDE_COOPI,
+))
+fig_ind.add_trace(go.Bar(
+    y=summary_final['Indicador'],
+    x=summary_final['Meta'],
+    name='Meta Oficial',
+    orientation='h',
+    text=summary_final['Meta'],
+    textposition='outside',
+    marker_color=COLOR_AZUL_COOPI,
+))
 
 fig_ind.update_layout(
     barmode='group',
@@ -655,11 +543,7 @@ fig_ind.update_layout(
 st.plotly_chart(fig_ind, width='stretch')
 
 st.markdown('#### Detalle de Avance por Indicador y Actividad')
-st.dataframe(
-    summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']],
-    width='stretch',
-    hide_index=True,
-)
+st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
 
 st.markdown('---')
 
@@ -679,9 +563,7 @@ if not df_prot_kobo.empty:
         total_casos_prot = len(df_proteccion_2026)
 
         df_servicios_count = (
-            df_proteccion_2026.groupby(
-                'Tipo_Servicio_Proteccion', as_index=False
-            )
+            df_proteccion_2026.groupby('Tipo_Servicio_Proteccion', as_index=False)
             .size()
             .rename(columns={'size': 'Cantidad_Unicos'})
         )
@@ -707,9 +589,6 @@ if not df_prot_kobo.empty:
         )
         st.plotly_chart(fig_prot, width='stretch')
     else:
-        st.info(
-            'No hay registros de servicios de protección para el año 2026 bajo'
-            ' el proyecto AICS.'
-        )
+        st.info('No hay registros de servicios de protección para el año 2026 bajo el proyecto AICS.')
 else:
     st.info('No hay datos disponibles para el capítulo de protección.')
