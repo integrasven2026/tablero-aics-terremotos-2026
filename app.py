@@ -98,8 +98,8 @@ with col_header_logo:
 
 st.markdown('---')
 
-# META OFICIAL DEL PROYECTO
-META_PARTICIPANTES_UNICOS = 4906
+# META OFICIAL DEL PROYECTO (Participantes Únicos Verificados: 969)
+META_PARTICIPANTES_UNICOS = 969
 
 MESES_ES = {
     1: 'Enero',
@@ -164,16 +164,16 @@ MAPA_INDICADORES_AICS = {
 METAS_INDICADORES_AICS = {
     'ob-1': {'meta': 85, 'tipo': 'porcentaje'},
     'ob-2': {'meta': 85, 'tipo': 'porcentaje'},
-    '1.1': {'meta': 4800, 'tipo': 'numero'},
-    '1.2': {'meta': 2000, 'tipo': 'numero'},
+    '1.1': {'meta': 969, 'tipo': 'numero'},
+    '1.2': {'meta': 500, 'tipo': 'numero'},
     '1.3': {'meta': 100, 'tipo': 'porcentaje'},
-    '2.1': {'meta': 1580, 'tipo': 'numero'},
+    '2.1': {'meta': 400, 'tipo': 'numero'},
     '2.2': {'meta': 75, 'tipo': 'porcentaje'},
-    '2.3': {'meta': 4134, 'tipo': 'numero'},
-    'r1a4': {'meta': 2200, 'tipo': 'numero'},
-    'r1a5': {'meta': 2500, 'tipo': 'numero'},
+    '2.3': {'meta': 800, 'tipo': 'numero'},
+    'r1a4': {'meta': 400, 'tipo': 'numero'},
+    'r1a5': {'meta': 500, 'tipo': 'numero'},
     'r2a2': {'meta': 195, 'tipo': 'numero'},
-    'r2a4': {'meta': 1500, 'tipo': 'numero'},
+    'r2a4': {'meta': 400, 'tipo': 'numero'},
 }
 
 RESULTADOS_CALCULADOS_USUARIO = {
@@ -233,7 +233,7 @@ def clasificar_servicio_por_usuario(val):
 @st.cache_data
 def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
     if not os.path.exists(excel_path):
-        st.warning(f"⚠️ Archivo '{excel_path}' no encontrado. Asegúrate de subirlo a tu repositorio de GitHub en la raíz.")
+        st.warning(f"⚠️ Archivo '{excel_path}' no encontrado. Súbelo al repositorio en la raíz.")
         return pd.DataFrame()
 
     try:
@@ -368,7 +368,7 @@ col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
 col2.metric('Participantes Únicos', f'{total_unicos:,}')
 col3.metric(
-    '% Alcance de la Meta (4.906 pers.)',
+    '% Alcance de la Meta (969 pers.)',
     f'{pct_meta:.2f}%',
     delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
 )
