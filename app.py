@@ -98,7 +98,7 @@ with col_header_logo:
 
 st.markdown('---')
 
-# META OFICIAL DEL PROYECTO
+# METAS OFICIALES DEL PROYECTO
 META_PARTICIPANTES_SERVICIOS = 4800
 META_PARTICIPANTES_UNICOS = 969
 
@@ -278,9 +278,6 @@ if df_raw.empty:
     st.warning('⚠️ No hay datos disponibles para mostrar en el tablero.')
     st.stop()
 
-df_wash = df_raw[df_raw['Sector'] == 'WASH'] if 'Sector' in df_raw.columns else pd.DataFrame()
-df_prot_kobo = df_raw[df_raw['Sector'] == 'Protección'] if 'Sector' in df_raw.columns else pd.DataFrame()
-
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
 # -----------------------------------------------------------------------------
@@ -310,10 +307,13 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE
+# APLICACIÓN ESTRICTA DE PARTICIPANTES ÚNICOS (Columna X: unicos_general == 1)
 # -----------------------------------------------------------------------------
 total_servicios = int(df_filtered['Servicios_Count'].sum())
-total_unicos = int(df_filtered['Unicos_General'].sum())
+
+# Filtro estricto para participantes únicos de la columna X
+df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1]
+total_unicos = len(df_unicos_rows)
 
 pct_meta_servicios = (
     (total_servicios / META_PARTICIPANTES_SERVICIOS) * 100
@@ -321,16 +321,16 @@ pct_meta_servicios = (
     else 0
 )
 
-df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1]
-
-conteo_sexo = df_unicos_rows.groupby('Sexo')['Unicos_General'].sum() if not df_unicos_rows.empty else pd.Series()
+conteo_sexo = df_unicos_rows.groupby('Sexo').size() if not df_unicos_rows.empty else pd.Series()
 total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
 total_otro = int(conteo_sexo.get('Otro', 0))
 
-conteo_disc = df_unicos_rows.groupby('Discapacidad')['Unicos_General'].sum() if not df_unicos_rows.empty else pd.Series()
-total_discapacidad = int(conteo_disc.get('Sí', 0))
+conteo_disc = df_unicos_rows[df_unicos_rows['Discapacidad'] == 'Sí'].shape[0] if not df_unicos_rows.empty else 0
 
+# -----------------------------------------------------------------------------
+# MÉTRICAS CLAVE
+# -----------------------------------------------------------------------------
 col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
 col2.metric('Participantes Únicos', f'{total_unicos:,}')
@@ -344,12 +344,12 @@ col_m, col_h, col_o, col_d = st.columns(4)
 col_m.metric('Participantes Únicos: Mujeres', f'{total_mujeres:,}')
 col_h.metric('Participantes Únicos: Hombres', f'{total_hombres:,}')
 col_o.metric('Participantes Únicos: Otro', f'{total_otro:,}')
-col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
+col_d.metric('Participantes con Discapacidad', f'{conteo_disc:,}')
 
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS
+# GRÁFICOS BASADOS EXCLUSIVAMENTE EN PARTICIPANTES ÚNICOS (Columna X)
 # -----------------------------------------------------------------------------
 g1, g2 = st.columns(2)
 
@@ -357,8 +357,8 @@ with g1:
     st.subheader('Participantes Únicos por Rango Etario y Sexo')
     if not df_unicos_rows.empty and 'Rango_Etario' in df_unicos_rows.columns:
         df_demo = (
-            df_unicos_rows.groupby(['Rango_Etario', 'Sexo'])['Unicos_General']
-            .sum()
+            df_unicos_rows.groupby(['Rango_Etario', 'Sexo'])
+            .size()
             .reset_index(name='Cantidad')
         )
 
@@ -385,7 +385,7 @@ with g1:
             showlegend=True,
             font=font_layout,
             xaxis_title='Rango Etario',
-            yaxis_title='Cantidad',
+            yaxis_title='Participantes Únicos',
         )
         st.plotly_chart(fig_demo, width='stretch')
     else:
@@ -395,8 +395,8 @@ with g2:
     st.subheader('Participantes Únicos por Municipio')
     if not df_unicos_rows.empty and 'Municipio' in df_unicos_rows.columns:
         df_muni = (
-            df_unicos_rows.groupby(['Estado', 'Municipio'])['Unicos_General']
-            .sum()
+            df_unicos_rows.groupby(['Estado', 'Municipio'])
+            .size()
             .reset_index(name='Cantidad')
         )
         df_muni = df_muni.sort_values(by='Cantidad', ascending=True)
@@ -411,7 +411,7 @@ with g2:
         )
         fig_muni.update_traces(textposition='outside')
         fig_muni.update_layout(
-            showlegend=True, font=font_layout, yaxis_title='Municipio'
+            showlegend=True, font=font_layout, yaxis_title='Municipio', xaxis_title='Participantes Únicos'
         )
         st.plotly_chart(fig_muni, width='stretch')
     else:
@@ -420,7 +420,7 @@ with g2:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# MAPA INTERACTIVO
+# MAPA INTERACTIVO (Basado en Participantes Únicos)
 # -----------------------------------------------------------------------------
 st.subheader('Mapa de Cobertura por Municipios Atendidos')
 
@@ -431,7 +431,7 @@ mapa = folium.Map(
 if not df_unicos_rows.empty:
     muni_resumen = []
     for (est, mun), grupo in df_unicos_rows.groupby(['Estado', 'Municipio']):
-        tot = int(grupo['Unicos_General'].sum())
+        tot = len(grupo)
         campamentos = sorted([
             c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'
         ])
@@ -542,6 +542,8 @@ st.markdown('---')
 # -----------------------------------------------------------------------------
 st.subheader('Resultado de protección')
 
+df_prot_kobo = df_unicos_rows[df_unicos_rows['Sector'] == 'Protección'] if 'Sector' in df_unicos_rows.columns else pd.DataFrame()
+
 if not df_prot_kobo.empty:
     df_proteccion_2026 = (
         df_prot_kobo[df_prot_kobo['Fecha_DT'].dt.year == 2026].copy()
@@ -559,7 +561,7 @@ if not df_prot_kobo.empty:
         )
 
         col_p1, col_p2 = st.columns(2)
-        col_p1.metric('Total de Casos', f'{total_casos_prot:,}')
+        col_p1.metric('Total de Casos Únicos', f'{total_casos_prot:,}')
         col_p2.metric('Participantes Únicos', f'{total_casos_prot:,}')
 
         fig_prot = px.bar(
@@ -575,7 +577,7 @@ if not df_prot_kobo.empty:
             showlegend=False,
             font=font_layout,
             xaxis_title='Tipo de Servicio de Protección',
-            yaxis_title='Cantidad de Casos',
+            yaxis_title='Participantes Únicos',
         )
         st.plotly_chart(fig_prot, width='stretch')
     else:
