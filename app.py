@@ -228,54 +228,63 @@ def clasificar_servicio_por_usuario(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE LA BASE DE EXCEL (Hoja group_beneficiario)
+# 2. CARGA DE DATOS DESDE LA BASE DE EXCEL (Hoja group_beneficiario, header=4)
 # -----------------------------------------------------------------------------
 @st.cache_data
 def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
+    if not os.path.exists(excel_path):
+        st.error(f"⚠️ No se encontró el archivo '{excel_path}' en el repositorio de GitHub. Por favor súbelo junto al app.py.")
+        return pd.DataFrame()
     try:
         xls = pd.ExcelFile(excel_path)
         sheet_name = 'group_beneficiario' if 'group_beneficiario' in xls.sheet_names else xls.sheet_names[0]
-        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name)
+        # header=4 salta los títulos superiores y toma la fila 4 como nombres de columnas
+        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name, header=4)
     except Exception as e:
-        st.error(f'Error al cargar el archivo Excel: {e}')
+        st.error(f'Error al leer el archivo Excel: {e}')
         return pd.DataFrame()
 
     registros = []
     for idx, row in df_raw.iterrows():
-        # Extracción y limpieza de campos clave
-        proyecto = str(row.get('proyecto', 'AICS')).strip().upper()
-        if proyecto and proyecto != 'AICS' and proyecto != 'NAN':
-            pass  # Permitir o filtrar si es necesario
+        # Validar si la fila tiene datos mínimos (por ejemplo, código ID o nombres)
+        codigo_id = str(row.get('CodigoID') or row.get('CODIGO') or f'ROW_{idx}').strip()
+        if not codigo_id or codigo_id.lower() in ['nan', 'none', '']:
+            continue
 
-        fecha = row.get('Fecha') or row.get('fecha') or row.get('_submission_time') or '2026-11-01'
+        proyecto = str(row.get('PROYECTO ') or row.get('PROYECTO') or 'AICS').strip().upper()
+        if proyecto and proyecto != 'AICS' and proyecto != 'NAN':
+            pass
+
+        fecha = row.get('AICS - SISTEMA INTEGRAL DE G.Fecha de la Actividad:') or row.get('Fecha') or '2026-11-01'
         
-        estado_raw = str(row.get('Estado') or row.get('estado') or 'Distrito Capital').strip()
+        estado_raw = str(row.get('AICS - SISTEMA INTEGRAL DE G.Estado') or row.get('Estado') or 'Distrito Capital').strip()
         estado = MAPA_ESTADOS.get(estado_raw, estado_raw or 'Distrito Capital')
 
-        muni_raw = str(row.get('Municipio') or row.get('municipio') or 'Libertador').strip()
+        muni_raw = str(row.get('AICS - SISTEMA INTEGRAL DE G.Municipio') or row.get('Municipio') or 'Libertador').strip()
         muni = MAPA_MUNICIPIOS.get(muni_raw, muni_raw or 'Libertador')
 
-        campamento = limpiar_texto(row.get('Campamento') or row.get('comunidad') or row.get('refugio') or 'No especificado')
+        campamento = 'No especificado' # Se puede extraer de comunidad si estuviera disponible
 
-        sector_raw = str(row.get('Sector') or row.get('resultado') or 'WASH').lower()
-        sector = 'WASH' if ('wash' in sector_raw or 'agua' in sector_raw or '1' in sector_raw) else 'Protección'
+        resultado_raw = str(row.get('AICS - SISTEMA INTEGRAL DE G.Resultado:') or row.get('Resultado:') or 'WASH').lower()
+        sector = 'WASH' if ('wash' in resultado_raw or 'agua' in resultado_raw or 'r1' in resultado_raw) else 'Protección'
 
-        tipo_serv = clasificar_servicio_por_usuario(row.get('Tipo_Servicio_Proteccion') or row.get('usuario') or '')
+        tipo_serv = clasificar_servicio_por_usuario(row.get('group_act.Actividad:') or '')
 
-        # Identificador único basado en codigoid
-        codigo_id = str(row.get('codigoid') or row.get('ID_Unico') or f'ROW_{idx}').strip()
-        id_unico = f'ID_{codigo_id}' if codigo_id and codigo_id.lower() not in ['none', 'nan', ''] else f'ROW_{idx}'
+        id_unico = f'ID_{codigo_id}'
 
-        sexo = normalizar_sexo(row.get('Sexo') or row.get('sexo') or 'Mujer')
-        rango_etario = limpiar_texto(row.get('Rango_Etario') or row.get('rango_etario') or '18 A 49 Años')
-        discapacidad = normalizar_discapacidad(row.get('Discapacidad') or row.get('persona_con_discapacidad') or 'No')
+        sexo = normalizar_sexo(row.get('Sexo') or 'Mujer')
+        rango_etario = limpiar_texto(row.get('rango_etario') or '18 a 49 años')
+        discapacidad = normalizar_discapacidad(row.get('Persona con Discapacidad') or 'No')
 
-        ind_val = str(row.get('Indicador') or row.get('indicador') or '1.1').strip().lower()
-        if ind_val not in MAPA_INDICADORES_AICS:
-            ind_val = '1.1'
+        ind_val_raw = str(row.get('ID_indicador') or row.get('group_act.Indicador:') or '1.1').strip().lower()
+        ind_val = '1.1'
+        for k_ind in MAPA_INDICADORES_AICS.keys():
+            if k_ind in ind_val_raw:
+                ind_val = k_ind
+                break
 
         registros.append({
-            '_id': row.get('_id', idx),
+            '_id': row.get('_index', idx),
             'Fecha': fecha,
             'Estado': estado,
             'Municipio': muni,
@@ -322,7 +331,7 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
 st.sidebar.markdown('---')
 
 if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
-    st.warning('⚠ No se pudieron cargar datos desde el archivo Excel.')
+    st.warning('⚠ No se pudieron cargar datos desde el archivo Excel. Asegúrate de incluir el archivo .xlsx en el repositorio de GitHub.')
     st.stop()
 
 meses_disp = ['Todos'] + sorted([m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha'])
@@ -397,7 +406,7 @@ with g1:
             '18 A 49 Años': 3,
             '50 Años O Más': 4
         }
-        df_demo['Orden'] = df_demo['Rango_Etario'].map(orden_etario).fillna(99)
+        df_demo['Orden'] = df_demo['Rango_Etario'].str.title().map(orden_etario).fillna(99)
         df_demo = df_demo.sort_values('Orden')
 
         fig_demo = px.bar(
@@ -415,7 +424,6 @@ with g1:
             font=font_layout,
             xaxis_title='Rango Etario',
             yaxis_title='Cantidad',
-            xaxis={'categoryorder': 'array', 'categoryarray': ['0 A 4 Años', '5 A 17 Años', '18 A 49 Años', '50 Años O Más']}
         )
         st.plotly_chart(fig_demo, width='stretch')
     else:
