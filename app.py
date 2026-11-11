@@ -207,7 +207,7 @@ def clasificar_servicio(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE EL EXCEL FIXED
+# 2. CARGA DE DATOS DESDE EL EXCEL FIXED (Cabecera en fila 0)
 # -----------------------------------------------------------------------------
 @st.cache_data
 def cargar_datos_fixed(
@@ -228,8 +228,7 @@ def cargar_datos_fixed(
             if 'group_beneficiario' in xls.sheet_names
             else xls.sheet_names[0]
         )
-        header_row = 0 if 'Fixed' in excel_path else 4
-        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name, header=header_row)
+        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name, header=0)
     except Exception as e:
         st.error(f'Error al leer el archivo Excel: {e}')
         return pd.DataFrame()
@@ -239,6 +238,8 @@ def cargar_datos_fixed(
         codigo_id = str(
             row.get('CodigoID') or row.get('CODIGO') or f'ROW_{idx}'
         ).strip()
+        if not codigo_id or codigo_id.lower() in ['nan', 'none', '']:
+            continue
 
         fecha = (
             row.get('AICS - SISTEMA INTEGRAL DE G.Fecha de la Actividad:')
@@ -280,7 +281,7 @@ def cargar_datos_fixed(
         id_unico = f'ID_{codigo_id}'
 
         # Sexo
-        val_sexo = row.get('Sexo') or (row.iloc[10] if len(row) > 10 else 'Mujer')
+        val_sexo = row.get('Sexo') or 'Mujer'
         s = str(val_sexo).lower().strip()
         if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2', 'm']):
             sexo = 'Mujer'
@@ -294,9 +295,7 @@ def cargar_datos_fixed(
         ).strip().title()
 
         # Discapacidad
-        val_disc = row.get('discapacidad') or (
-            row.iloc[13] if len(row) > 13 else 'No'
-        )
+        val_disc = row.get('Persona con Discapacidad') or row.get('discapacidad') or 'No'
         d_str = str(val_disc).lower().strip()
         discapacidad = (
             'Sí'
@@ -316,11 +315,9 @@ def cargar_datos_fixed(
                 ind_val = k_ind
                 break
 
-        # Unicidad general
+        # Unicidad general (Columna oficial BENFICIARIOS UNICOS GENERAL / Unicos_Num)
         try:
-            val_u = row.get('unicos_general') or row.get('Unicos_Num') or (
-                row.iloc[37] if len(row) > 37 else 0
-            )
+            val_u = row.get('BENEFICIARIOS UNICOS GENERAL') or row.get('Unicos_Num') or row.get('unicos_general') or 0
             val_unicos_gen = int(float(val_u))
             if val_unicos_gen != 1:
                 val_unicos_gen = 0
