@@ -207,20 +207,31 @@ def clasificar_servicio(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE EL NUEVO EXCEL PRO
+# 2. CARGA DE DATOS DESDE EL EXCEL FIXED
 # -----------------------------------------------------------------------------
 @st.cache_data
-def cargar_datos_pro(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready_Pro.xlsx'):
+def cargar_datos_fixed(
+    excel_path='BBDD_SIGA_AICS_Clean_Data_Ready_Fixed.xlsx'
+):
     if not os.path.exists(excel_path):
-        st.warning(
-            f"⚠️ Archivo '{excel_path}' no encontrado. Súbelo a la raíz del repositorio."
-        )
-        return pd.DataFrame()
+        excel_path = 'BBDD SIGA AICS Noviembre_2026_tablero.xlsx'
+        if not os.path.exists(excel_path):
+            st.warning(
+                f'⚠️ No se encontró ningún archivo Excel compatible en la raíz.'
+            )
+            return pd.DataFrame()
 
     try:
-        df_raw = pd.read_excel(excel_path, sheet_name='group_beneficiario')
+        xls = pd.ExcelFile(excel_path)
+        sheet_name = (
+            'group_beneficiario'
+            if 'group_beneficiario' in xls.sheet_names
+            else xls.sheet_names[0]
+        )
+        header_row = 0 if 'Fixed' in excel_path else 4
+        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name, header=header_row)
     except Exception as e:
-        st.error(f'Error al leer el archivo Excel pro: {e}')
+        st.error(f'Error al leer el archivo Excel: {e}')
         return pd.DataFrame()
 
     registros = []
@@ -228,8 +239,6 @@ def cargar_datos_pro(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready_Pro.xlsx'):
         codigo_id = str(
             row.get('CodigoID') or row.get('CODIGO') or f'ROW_{idx}'
         ).strip()
-        if not codigo_id or codigo_id.lower() in ['nan', 'none', '']:
-            continue
 
         fecha = (
             row.get('AICS - SISTEMA INTEGRAL DE G.Fecha de la Actividad:')
@@ -267,13 +276,11 @@ def cargar_datos_pro(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready_Pro.xlsx'):
             else 'Protección'
         )
 
-        tipo_serv = clasificar_servicio(
-            row.get('group_act.Actividad:') or row.get('Actividad') or ''
-        )
+        tipo_serv = clasificar_servicio(row.get('group_act.Actividad:') or '')
         id_unico = f'ID_{codigo_id}'
 
-        # Sexo (Columna índice 10 aproximadamente o nombre limpio)
-        val_sexo = row.get('sexo_clean') or row.iloc[10] if len(row) > 10 else 'Mujer'
+        # Sexo
+        val_sexo = row.get('Sexo') or (row.iloc[10] if len(row) > 10 else 'Mujer')
         s = str(val_sexo).lower().strip()
         if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2', 'm']):
             sexo = 'Mujer'
@@ -283,11 +290,13 @@ def cargar_datos_pro(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready_Pro.xlsx'):
             sexo = 'Otro'
 
         rango_etario = str(
-            row.get('rango_etario') or row.get('Rango_Etario') or '18 a 49 años'
+            row.get('rango_etario') or '18 a 49 años'
         ).strip().title()
 
         # Discapacidad
-        val_disc = row.get('discapacidad') or row.iloc[13] if len(row) > 13 else 'No'
+        val_disc = row.get('discapacidad') or (
+            row.iloc[13] if len(row) > 13 else 'No'
+        )
         d_str = str(val_disc).lower().strip()
         discapacidad = (
             'Sí'
@@ -299,9 +308,7 @@ def cargar_datos_pro(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready_Pro.xlsx'):
         )
 
         ind_val_raw = str(
-            row.get('ID_indicador')
-            or row.get('group_act.Indicador:')
-            or '1.1'
+            row.get('ID_indicador') or row.get('group_act.Indicador:') or '1.1'
         ).strip().lower()
         ind_val = '1.1'
         for k_ind in MAPA_INDICADORES_AICS.keys():
@@ -309,14 +316,15 @@ def cargar_datos_pro(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready_Pro.xlsx'):
                 ind_val = k_ind
                 break
 
-        # Unicidad general (Columna X / índice 37)
+        # Unicidad general
         try:
-            val_unicos_gen = int(
-                row.get('unicos_clean') or row.iloc[37] if len(row) > 37 else 0
+            val_u = row.get('unicos_general') or row.get('Unicos_Num') or (
+                row.iloc[37] if len(row) > 37 else 0
             )
-            if val_unicos_gen > 1:
+            val_unicos_gen = int(float(val_u))
+            if val_unicos_gen != 1:
                 val_unicos_gen = 0
-        except:
+        except Exception:
             val_unicos_gen = 0
 
         registros.append({
@@ -352,7 +360,7 @@ def cargar_datos_pro(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready_Pro.xlsx'):
     return df
 
 
-df_raw = cargar_datos_pro()
+df_raw = cargar_datos_fixed()
 
 if df_raw.empty:
     st.warning('⚠️ No hay datos disponibles para mostrar en el tablero.')
@@ -696,4 +704,4 @@ if not df_prot_kobo.empty:
             ' el proyecto AICS.'
         )
 else:
-    st.info('No hay datos disponibles para el capítulo de protección.')
+  st.info('No hay datos disponibles para el capítulo de protección.')
