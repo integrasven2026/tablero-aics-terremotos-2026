@@ -81,6 +81,7 @@ with col_header_logo:
         'COOPI.jpg',
         'AICS.jpeg',
         'aics.jpeg',
+        'AICS.jpg',
     ]
     logo_path = None
     for nombre in posibles_nombres:
@@ -207,23 +208,31 @@ def clasificar_servicio(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE EL CSV LIMPIO
+# 2. CARGA DE DATOS DESDE EL EXCEL OFICIAL DE NOVIEMBRE
 # -----------------------------------------------------------------------------
 @st.cache_data
-def cargar_datos_csv(csv_path='beneficiarios_aics_clean.csv'):
-    if not os.path.exists(csv_path):
-        st.warning('⚠️ No se encontró el archivo CSV limpio en la raíz.')
+def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
+    if not os.path.exists(excel_path):
+        st.warning(f'⚠️ No se encontró el archivo {excel_path} en la raíz.')
         return pd.DataFrame()
 
     try:
-        df_raw = pd.read_csv(csv_path)
+        xls = pd.ExcelFile(excel_path)
+        sheet_name = (
+            'group_beneficiario'
+            if 'group_beneficiario' in xls.sheet_names
+            else xls.sheet_names[0]
+        )
+        df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=5)
     except Exception as e:
-        st.error(f'Error al leer el archivo CSV: {e}')
+        st.error(f'Error al leer el archivo Excel: {e}')
         return pd.DataFrame()
 
     registros = []
     for idx, row in df_raw.iterrows():
-        codigo_id = str(row.get('CodigoID') or row.get('CODIGO') or f'ROW_{idx}').strip()
+        codigo_id = str(
+            row.get('CodigoID') or row.get('CODIGO') or f'ROW_{idx}'
+        ).strip()
         if not codigo_id or codigo_id.lower() in ['nan', 'none', '']:
             continue
 
@@ -266,11 +275,11 @@ def cargar_datos_csv(csv_path='beneficiarios_aics_clean.csv'):
         tipo_serv = clasificar_servicio(row.get('group_act.Actividad:') or '')
         id_unico = f'ID_{codigo_id}'
 
-        # Sexo estricto por coincidencia exacta
+        # Sexo
         val_sexo = str(row.get('Sexo') or 'Mujer').strip().title()
-        if 'Hombre' in val_sexo or 'H' == val_sexo:
+        if 'Hombre' in val_sexo or val_sexo == 'H':
             sexo = 'Hombre'
-        elif 'Mujer' in val_sexo or 'M' == val_sexo:
+        elif 'Mujer' in val_sexo or val_sexo == 'M':
             sexo = 'Mujer'
         else:
             sexo = 'Otro'
@@ -280,8 +289,16 @@ def cargar_datos_csv(csv_path='beneficiarios_aics_clean.csv'):
         ).strip().title()
 
         # Discapacidad
-        val_disc = str(row.get('Persona con Discapacidad') or 'No').strip().lower()
-        discapacidad = 'Sí' if any(x in val_disc for x in ['sí', 'si', 'yes', 'true', '1']) else 'No'
+        val_disc = str(
+            row.get('Persona con Discapacidad') or 'No'
+        ).strip().lower()
+        discapacidad = (
+            'Sí'
+            if any(
+                x in val_disc for x in ['sí', 'si', 'yes', 'true', '1']
+            )
+            else 'No'
+        )
 
         ind_val_raw = str(
             row.get('ID_indicador') or row.get('group_act.Indicador:') or '1.1'
@@ -292,7 +309,7 @@ def cargar_datos_csv(csv_path='beneficiarios_aics_clean.csv'):
                 ind_val = k_ind
                 break
 
-        # Unicidad general oficial
+        # Unicidad general oficial del Excel
         try:
             val_u = row.get('BENEFICIARIOS UNICOS GENERAL') or 0
             val_unicos_gen = int(float(val_u))
@@ -334,7 +351,7 @@ def cargar_datos_csv(csv_path='beneficiarios_aics_clean.csv'):
     return df
 
 
-df_raw = cargar_datos_csv()
+df_raw = cargar_datos_excel()
 
 if df_raw.empty:
     st.warning('⚠️ No hay datos disponibles para mostrar en el tablero.')
@@ -362,16 +379,17 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
 
 st.sidebar.markdown('---')
 
-meses_disp = ['Todos'] + sorted(
+meses_unicos = sorted(
     [m for m in df_raw['Mes_Reporte'].unique() if m != 'Todos']
 )
-mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp)
+meses_disp = ['Todos'] + meses_unicos
+mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp, index=0)
 
 sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
-sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp)
+sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp, index=0)
 
 rango_disp = ['Todos'] + sorted(df_raw['Rango_Etario'].unique().tolist())
-rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp)
+rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp, index=0)
 
 df_filtered = df_raw.copy()
 if mes_sel != 'Todos':
@@ -669,7 +687,7 @@ if not df_prot_kobo.empty:
             showlegend=False,
             font=font_layout,
             xaxis_title='Tipo de Servicio de Protección',
-            yaxis_title='Cantidad de Casos',
+            yaxis_title='Cantidad_Casos',
         )
         st.plotly_chart(fig_prot, width='stretch')
     else:
