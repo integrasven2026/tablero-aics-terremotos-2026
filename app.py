@@ -156,7 +156,7 @@ MAPA_INDICADORES_AICS = {
     '1.3': 'Indicador 1.3: % Personas con discapacidad con WASH adaptadas',
     '2.1': 'Indicador 2.1: N.º de niños y niñas con apoyo psicosocial / CFS',
     '2.2': 'Indicador 2.2: % Población con conocimiento de prevención VBG',
-    '2.3': 'Indicador 2.3: N.º de personas con medidas de protección y prevention',
+    '2.3': 'Indicador 2.3: N.º de personas con medidas de protección y prevención',
     'r1a4': 'R1A4: Fortalecimiento capacidades (WASH/Dignidad)',
     'r1a5': 'R1A5: Sesiones informativas y sensibilización',
     'r2a2': 'R2A2: Gestión de casos y asistencia personalizada',
@@ -176,21 +176,6 @@ METAS_INDICADORES_AICS = {
     'r1a5': {'meta': 2500, 'tipo': 'numero'},
     'r2a2': {'meta': 195, 'tipo': 'numero'},
     'r2a4': {'meta': 1500, 'tipo': 'numero'},
-}
-
-RESULTADOS_CALCULADOS_USUARIO = {
-    '1.1': 180,
-    '1.2': 35,
-    '1.3': 17,
-    '2.1': 18,
-    '2.2': 0,
-    '2.3': 277,
-    'ob-1': 0,
-    'ob-2': 25,
-    'r1a4': 0,
-    'r1a5': 0,
-    'r2a2': 0,
-    'r2a4': 0,
 }
 
 font_layout = dict(family='Quicksand', size=13)
@@ -272,7 +257,8 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
             else 'Protección'
         )
 
-        tipo_serv = clasificar_servicio(row.get('group_act.Actividad:') or '')
+        actividad_texto = str(row.get('group_act.Actividad:') or '').strip()
+        tipo_serv = clasificar_servicio(actividad_texto)
         id_unico = f'ID_{codigo_id}'
 
         # Sexo
@@ -309,6 +295,16 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
                 ind_val = k_ind
                 break
 
+        # Mapeo preciso de actividad por código o texto
+        if '1.2' in actividad_texto or 'higiene' in actividad_texto.lower():
+            ind_val = '1.1'
+        elif '2.1' in actividad_texto and 'grupal' in actividad_texto.lower():
+            ind_val = '2.3'
+        elif '2.3' in actividad_texto or 'child friendly' in actividad_texto.lower():
+            ind_val = '2.1'
+        elif '2.5' in actividad_texto or 'legal' in actividad_texto.lower():
+            ind_val = '2.3'
+
         # Unicidad general oficial del Excel
         try:
             val_u = row.get('BENEFICIARIOS UNICOS GENERAL') or 0
@@ -325,6 +321,7 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
             'Municipio': muni,
             'Campamento': campamento,
             'Sector': sector,
+            'Actividad': actividad_texto,
             'Tipo_Servicio_Proteccion': tipo_serv,
             'ID_Unico': id_unico,
             'Sexo': sexo,
@@ -582,15 +579,23 @@ st_folium(mapa, width='stretch', height=450)
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES Y ACTIVIDADES)
+# CÁLCULO DINÁMICO DE RESULTADOS POR INDICADOR DESDE LA BBDD
 # -----------------------------------------------------------------------------
-st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
+resultados_dinamicos = (
+    df_raw.groupby('Indicador')['Unicos_General'].sum().to_dict()
+)
 
 todos_inds = []
 for k, nombre in MAPA_INDICADORES_AICS.items():
-    res_val = RESULTADOS_CALCULADOS_USUARIO.get(k, 0)
+    res_val = int(resultados_dinamicos.get(k, 0))
     meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
-    alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
+    tipo_meta = METAS_INDICADORES_AICS.get(k, {'tipo': 'numero'})['tipo']
+
+    if tipo_meta == 'porcentaje':
+        alc = res_val if res_val <= meta_val else 100.0
+    else:
+        alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
+
     todos_inds.append({
         'Codigo': k.upper(),
         'Indicador': nombre,
@@ -601,6 +606,11 @@ for k, nombre in MAPA_INDICADORES_AICS.items():
 
 summary_final = pd.DataFrame(todos_inds)
 summary_final = summary_final.sort_values(by='Codigo', ascending=False)
+
+# -----------------------------------------------------------------------------
+# REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES Y ACTIVIDADES)
+# -----------------------------------------------------------------------------
+st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
 
 fig_ind = go.Figure()
 fig_ind.add_trace(
@@ -696,4 +706,4 @@ if not df_prot_kobo.empty:
             ' el proyecto AICS.'
         )
 else:
-  st.info('No hay datos disponibles para el capítulo de protección.')
+    st.info('No hay datos disponibles para el capítulo de protección.')
