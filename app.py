@@ -189,6 +189,8 @@ def clasificar_servicio(val):
         return 'APS Psicosocial'
     elif 'gestor' in s:
         return 'Gestoría de Caso'
+    elif 'child friendly' in s or '2.3' in s:
+        return 'Espacios Amigables (CFS)'
     return 'Gestoría de Caso'
 
 
@@ -671,24 +673,25 @@ if not df_prot_kobo.empty:
 
     if not df_proteccion_2026.empty:
         total_casos_prot = len(df_proteccion_2026)
+        total_unicos_prot = df_proteccion_2026['Case_ID'].nunique()
+
+        col_p1, col_p2 = st.columns(2)
+        col_p1.metric('Total de Casos', f'{total_casos_prot:,}')
+        col_p2.metric('Participantes Únicos', f'{total_unicos_prot:,}')
 
         df_servicios_count = (
             df_proteccion_2026.groupby(
                 'Tipo_Servicio_Proteccion', as_index=False
             )
-            .size()
-            .rename(columns={'size': 'Cantidad_Unicos'})
+            .agg(Cantidad_Casos=('Servicios_Count', 'sum'))
+            .sort_values(by='Cantidad_Casos', ascending=False)
         )
-
-        col_p1, col_p2 = st.columns(2)
-        col_p1.metric('Total de Casos', f'{total_casos_prot:,}')
-        col_p2.metric('Participantes Únicos', f'{total_casos_prot:,}')
 
         fig_prot = px.bar(
             df_servicios_count,
             x='Tipo_Servicio_Proteccion',
-            y='Cantidad_Unicos',
-            text='Cantidad_Unicos',
+            y='Cantidad_Casos',
+            text='Cantidad_Casos',
             color='Tipo_Servicio_Proteccion',
             color_discrete_sequence=PALETA_COOPI,
         )
