@@ -276,6 +276,15 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
                 ind_val = k_ind
                 break
 
+        # Ponderación basada en la unicidad oficial del Excel (Columna índice 37: BENEFICIARIOS UNICOS GENERAL)
+        pond_unico = 1
+        try:
+            val_col37 = row.iloc[37] if len(row) > 37 else 1
+            if pd.notnull(val_col37) and str(val_col37).replace('.', '', 1).isdigit():
+                pond_unico = int(float(val_col37))
+        except Exception:
+            pond_unico = 1
+
         registros.append({
             '_id': row.get('_index', idx),
             'Fecha': fecha,
@@ -289,7 +298,8 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
             'Rango_Etario': rango_etario,
             'Discapacidad': discapacidad,
             'Indicador': ind_val,
-            'Ponderacion': 1,
+            'Ponderacion_Servicios': 1,
+            'Ponderacion_Unicos': pond_unico,
             'Case_ID': codigo_id
         })
 
@@ -346,22 +356,23 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE
+# MÉTRICAS CLAVE (Servicios vs Participantes Únicos)
 # -----------------------------------------------------------------------------
-total_servicios = int(df_filtered['Ponderacion'].sum())
-df_unicos = df_filtered.drop_duplicates(subset=['ID_Unico'])
-total_unicos = int(df_unicos['Ponderacion'].sum())
+total_servicios = int(df_filtered['Ponderacion_Servicios'].sum())
+total_unicos = int(df_filtered.drop_duplicates(subset=['ID_Unico'])['Ponderacion_Unicos'].sum())
+
 pct_meta = (
     (total_unicos / META_PARTICIPANTES_UNICOS) * 100
     if META_PARTICIPANTES_UNICOS > 0
     else 0
 )
 
-conteo_sexo = df_unicos.groupby('Sexo')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
+df_unicos_filtrado = df_filtered.drop_duplicates(subset=['ID_Unico'])
+conteo_sexo = df_unicos_filtrado.groupby('Sexo')['Ponderacion_Unicos'].sum() if not df_unicos_filtrado.empty else pd.Series()
 total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
 
-conteo_disc = df_unicos.groupby('Discapacidad')['Ponderacion'].sum() if not df_unicos.empty else pd.Series()
+conteo_disc = df_unicos_filtrado.groupby('Discapacidad')['Ponderacion_Unicos'].sum() if not df_unicos_filtrado.empty else pd.Series()
 total_discapacidad = int(conteo_disc.get('Sí', 0))
 
 col1, col2, col3 = st.columns(3)
@@ -387,9 +398,9 @@ g1, g2 = st.columns(2)
 
 with g1:
     st.subheader('Participantes Únicos por Rango Etario y Sexo')
-    if not df_unicos.empty and 'Rango_Etario' in df_unicos.columns:
+    if not df_unicos_filtrado.empty and 'Rango_Etario' in df_unicos_filtrado.columns:
         df_demo = (
-            df_unicos.groupby(['Rango_Etario', 'Sexo'])['Ponderacion']
+            df_unicos_filtrado.groupby(['Rango_Etario', 'Sexo'])['Ponderacion_Unicos']
             .sum()
             .reset_index(name='Cantidad')
         )
@@ -425,9 +436,9 @@ with g1:
 
 with g2:
     st.subheader('Participantes Únicos por Municipio')
-    if not df_unicos.empty and 'Municipio' in df_unicos.columns:
+    if not df_unicos_filtrado.empty and 'Municipio' in df_unicos_filtrado.columns:
         df_muni = (
-            df_unicos.groupby(['Estado', 'Municipio'])['Ponderacion']
+            df_unicos_filtrado.groupby(['Estado', 'Municipio'])['Ponderacion_Unicos']
             .sum()
             .reset_index(name='Cantidad')
         )
@@ -460,10 +471,10 @@ mapa = folium.Map(
     location=[10.40, -66.90], zoom_start=10, tiles='OpenStreetMap'
 )
 
-if not df_unicos.empty:
+if not df_unicos_filtrado.empty:
     muni_resumen = []
-    for (est, mun), grupo in df_unicos.groupby(['Estado', 'Municipio']):
-        tot = int(grupo['Ponderacion'].sum())
+    for (est, mun), grupo in df_unicos_filtrado.groupby(['Estado', 'Municipio']):
+        tot = int(grupo['Ponderacion_Unicos'].sum())
         campamentos = sorted([c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'])
         campamentos_str = "<br>".join([f"- {c}" for c in campamentos])
         if not campamentos_str:
