@@ -202,16 +202,16 @@ def limpiar_texto(texto):
 
 def normalizar_sexo(valor):
     s = str(valor).lower().strip()
-    if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2']):
+    if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2', 'm']):
         return 'Mujer'
-    elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1']):
+    elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1', 'h']):
         return 'Hombre'
     return 'Mujer'
 
 
 def normalizar_discapacidad(valor):
     s = str(valor).lower().strip()
-    if any(x in s for x in ['sí', 'si', 'yes', 'true', '1']) and 'count_' not in s:
+    if any(x in s for x in ['sí', 'si', 'yes', 'true', '1', 'persona con discapacidad']):
         return 'Sí'
     return 'No'
 
@@ -233,12 +233,12 @@ def clasificar_servicio_por_usuario(val):
 @st.cache_data
 def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
     if not os.path.exists(excel_path):
-        st.error(f"⚠️ No se encontró el archivo '{excel_path}' en el repositorio de GitHub. Por favor súbelo junto al app.py.")
+        st.warning(f"⚠️ Archivo '{excel_path}' no encontrado. Asegúrate de subirlo a tu repositorio de GitHub en la raíz.")
         return pd.DataFrame()
+
     try:
         xls = pd.ExcelFile(excel_path)
         sheet_name = 'group_beneficiario' if 'group_beneficiario' in xls.sheet_names else xls.sheet_names[0]
-        # header=4 salta los títulos superiores y toma la fila 4 como nombres de columnas
         df_raw = pd.read_excel(excel_path, sheet_name=sheet_name, header=4)
     except Exception as e:
         st.error(f'Error al leer el archivo Excel: {e}')
@@ -246,14 +246,9 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
 
     registros = []
     for idx, row in df_raw.iterrows():
-        # Validar si la fila tiene datos mínimos (por ejemplo, código ID o nombres)
         codigo_id = str(row.get('CodigoID') or row.get('CODIGO') or f'ROW_{idx}').strip()
         if not codigo_id or codigo_id.lower() in ['nan', 'none', '']:
             continue
-
-        proyecto = str(row.get('PROYECTO ') or row.get('PROYECTO') or 'AICS').strip().upper()
-        if proyecto and proyecto != 'AICS' and proyecto != 'NAN':
-            pass
 
         fecha = row.get('AICS - SISTEMA INTEGRAL DE G.Fecha de la Actividad:') or row.get('Fecha') or '2026-11-01'
         
@@ -263,18 +258,16 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
         muni_raw = str(row.get('AICS - SISTEMA INTEGRAL DE G.Municipio') or row.get('Municipio') or 'Libertador').strip()
         muni = MAPA_MUNICIPIOS.get(muni_raw, muni_raw or 'Libertador')
 
-        campamento = 'No especificado' # Se puede extraer de comunidad si estuviera disponible
-
+        campamento = 'No especificado'
         resultado_raw = str(row.get('AICS - SISTEMA INTEGRAL DE G.Resultado:') or row.get('Resultado:') or 'WASH').lower()
         sector = 'WASH' if ('wash' in resultado_raw or 'agua' in resultado_raw or 'r1' in resultado_raw) else 'Protección'
 
         tipo_serv = clasificar_servicio_por_usuario(row.get('group_act.Actividad:') or '')
-
         id_unico = f'ID_{codigo_id}'
 
-        sexo = normalizar_sexo(row.get('Sexo') or 'Mujer')
+        sexo = normalizar_sexo(row.get('Sexo') or row.get('ID_sexo') or 'Mujer')
         rango_etario = limpiar_texto(row.get('rango_etario') or '18 a 49 años')
-        discapacidad = normalizar_discapacidad(row.get('Persona con Discapacidad') or 'No')
+        discapacidad = normalizar_discapacidad(row.get('Persona con Discapacidad') or row.get('CONDICION') or 'No')
 
         ind_val_raw = str(row.get('ID_indicador') or row.get('group_act.Indicador:') or '1.1').strip().lower()
         ind_val = '1.1'
@@ -316,8 +309,13 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
 
 
 df_raw = cargar_datos_excel()
-df_wash = df_raw[df_raw['Sector'] == 'WASH']
-df_prot_kobo = df_raw[df_raw['Sector'] == 'Protección']
+
+if df_raw.empty:
+    st.warning('⚠ No hay datos disponibles para mostrar en el tablero.')
+    st.stop()
+
+df_wash = df_raw[df_raw['Sector'] == 'WASH'] if 'Sector' in df_raw.columns else pd.DataFrame()
+df_prot_kobo = df_raw[df_raw['Sector'] == 'Protección'] if 'Sector' in df_raw.columns else pd.DataFrame()
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -329,10 +327,6 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
     st.rerun()
 
 st.sidebar.markdown('---')
-
-if df_raw.empty or 'Mes_Reporte' not in df_raw.columns:
-    st.warning('⚠ No se pudieron cargar datos desde el archivo Excel. Asegúrate de incluir el archivo .xlsx en el repositorio de GitHub.')
-    st.stop()
 
 meses_disp = ['Todos'] + sorted([m for m in df_raw['Mes_Reporte'].unique() if m != 'Sin Fecha'])
 mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp)
