@@ -207,19 +207,25 @@ def clasificar_servicio(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE EL EXCEL FIXED (Cabecera en fila 0)
+# 2. CARGA DE DATOS ROBUSTA (Detecta variantes con/sin guion bajo)
 # -----------------------------------------------------------------------------
 @st.cache_data
-def cargar_datos_fixed(
-    excel_path='BBDD_SIGA_AICS_Clean_Data_Ready_Fixed.xlsx'
-):
-    if not os.path.exists(excel_path):
-        excel_path = 'BBDD SIGA AICS Noviembre_2026_tablero.xlsx'
-        if not os.path.exists(excel_path):
-            st.warning(
-                f'⚠️ No se encontró ningún archivo Excel compatible en la raíz.'
-            )
-            return pd.DataFrame()
+def cargar_datos_fixed():
+    candidatos = [
+        'BBDD_SIGA_AICS_Clean_Data_Ready_Fixed_.xlsx',
+        'BBDD_SIGA_AICS_Clean_Data_Ready_Fixed.xlsx',
+        'BBDD SIGA AICS Noviembre_2026_tablero.xlsx'
+    ]
+    
+    excel_path = None
+    for c in candidatos:
+        if os.path.exists(c):
+            excel_path = c
+            break
+            
+    if not excel_path:
+        st.warning('⚠️ No se encontró ningún archivo Excel compatible en la raíz del repositorio.')
+        return pd.DataFrame()
 
     try:
         xls = pd.ExcelFile(excel_path)
@@ -228,7 +234,8 @@ def cargar_datos_fixed(
             if 'group_beneficiario' in xls.sheet_names
             else xls.sheet_names[0]
         )
-        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name, header=0)
+        header_row = 0 if 'Fixed' in excel_path else 4
+        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name, header=header_row)
     except Exception as e:
         st.error(f'Error al leer el archivo Excel: {e}')
         return pd.DataFrame()
@@ -315,7 +322,7 @@ def cargar_datos_fixed(
                 ind_val = k_ind
                 break
 
-        # Unicidad general (Columna oficial BENFICIARIOS UNICOS GENERAL / Unicos_Num)
+        # Unicidad general
         try:
             val_u = row.get('BENEFICIARIOS UNICOS GENERAL') or row.get('Unicos_Num') or row.get('unicos_general') or 0
             val_unicos_gen = int(float(val_u))
