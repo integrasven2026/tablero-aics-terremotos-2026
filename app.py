@@ -207,36 +207,18 @@ def clasificar_servicio(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS ROBUSTA (Leyendo la cabecera exacta en la fila 1)
+# 2. CARGA DE DATOS DESDE EL CSV LIMPIO
 # -----------------------------------------------------------------------------
 @st.cache_data
-def cargar_datos_fixed():
-    candidatos = [
-        'BBDD_SIGA_AICS_Clean_Data_Ready_Fixed_.xlsx',
-        'BBDD_SIGA_AICS_Clean_Data_Ready_Fixed.xlsx',
-        'BBDD SIGA AICS Noviembre_2026_tablero.xlsx',
-    ]
-
-    excel_path = None
-    for c in candidatos:
-        if os.path.exists(c):
-            excel_path = c
-            break
-
-    if not excel_path:
-        st.warning('⚠️ No se encontró ningún archivo Excel compatible en la raíz.')
+def cargar_datos_csv(csv_path='beneficiarios_aics_clean.csv'):
+    if not os.path.exists(csv_path):
+        st.warning('⚠️ No se encontró el archivo CSV limpio en la raíz.')
         return pd.DataFrame()
 
     try:
-        xls = pd.ExcelFile(excel_path)
-        sheet_name = (
-            'group_beneficiario'
-            if 'group_beneficiario' in xls.sheet_names
-            else xls.sheet_names[0]
-        )
-        df_raw = pd.read_excel(excel_path, sheet_name=sheet_name, header=1)
+        df_raw = pd.read_csv(csv_path)
     except Exception as e:
-        st.error(f'Error al leer el archivo Excel: {e}')
+        st.error(f'Error al leer el archivo CSV: {e}')
         return pd.DataFrame()
 
     registros = []
@@ -284,7 +266,7 @@ def cargar_datos_fixed():
         tipo_serv = clasificar_servicio(row.get('group_act.Actividad:') or '')
         id_unico = f'ID_{codigo_id}'
 
-        # Sexo (Columna 'Sexo')
+        # Sexo
         val_sexo = row.get('Sexo') or 'Mujer'
         s = str(val_sexo).lower().strip()
         if any(x in s for x in ['muj', 'fem', 'mujer', 'femenino', '2', 'm']):
@@ -298,7 +280,7 @@ def cargar_datos_fixed():
             row.get('rango_etario') or '18 a 49 años'
         ).strip().title()
 
-        # Discapacidad (Columna 'Persona con Discapacidad')
+        # Discapacidad
         val_disc = row.get('Persona con Discapacidad') or 'No'
         d_str = str(val_disc).lower().strip()
         discapacidad = (
@@ -319,7 +301,7 @@ def cargar_datos_fixed():
                 ind_val = k_ind
                 break
 
-        # Unicidad general (Columna 'BENEFICIARIOS UNICOS GENERAL')
+        # Unicidad general oficial
         try:
             val_u = row.get('BENEFICIARIOS UNICOS GENERAL') or 0
             val_unicos_gen = int(float(val_u))
@@ -361,7 +343,7 @@ def cargar_datos_fixed():
     return df
 
 
-df_raw = cargar_datos_fixed()
+df_raw = cargar_datos_csv()
 
 if df_raw.empty:
     st.warning('⚠️ No hay datos disponibles para mostrar en el tablero.')
