@@ -100,7 +100,7 @@ st.markdown('---')
 
 # METAS OFICIALES DEL PROYECTO
 META_PARTICIPANTES_SERVICIOS = 4800
-META_PARTICIPANTES_UNICOS = 969
+META_PARTICIPANTES_UNICOS = 832
 
 MESES_ES = {
     1: 'Enero',
@@ -186,7 +186,7 @@ def clasificar_servicio(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE EL EXCEL LIMPIO
+# 2. CARGA DE DATOS DESDE EL EXCEL LIMPIO (Filtrando códigos válidos)
 # -----------------------------------------------------------------------------
 @st.cache_data
 def cargar_datos_limpios(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready.xlsx'):
@@ -204,8 +204,9 @@ def cargar_datos_limpios(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready.xlsx'):
 
     registros = []
     for idx, row in df.iterrows():
-        codigo_id = str(row.get('codigo_id') or row.get('codigo') or f'ROW_{idx}').strip()
-        if not codigo_id or codigo_id.lower() in ['nan', 'none', '']:
+        codigo_id = str(row.get('codigo_id') or '').strip()
+        # Filtramos filas sin código ID válido para evitar duplicados vacíos
+        if not codigo_id or codigo_id.lower() in ['nan', 'none', '', 'nat']:
             continue
 
         fecha = row.get('fecha_actividad') or '2026-11-01'
@@ -234,11 +235,6 @@ def cargar_datos_limpios(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready.xlsx'):
                 ind_val = k_ind
                 break
 
-        try:
-            val_unicos = int(row.get('unicos_general', 1))
-        except:
-            val_unicos = 1
-
         registros.append({
             '_id': idx,
             'Fecha': fecha,
@@ -253,7 +249,6 @@ def cargar_datos_limpios(excel_path='BBDD_SIGA_AICS_Clean_Data_Ready.xlsx'):
             'Discapacidad': discapacidad,
             'Indicador': ind_val,
             'Servicios_Count': 1,
-            'Unicos_General': val_unicos,
             'Case_ID': codigo_id,
         })
 
@@ -307,12 +302,12 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# APLICACIÓN ESTRICTA: FILTRO DE PARTICIPANTES ÚNICOS (Columna X: unicos_general == 1)
+# CÁLCULO ESTRICTO DE PARTICIPANTES ÚNICOS (Por ID de Participante)
 # -----------------------------------------------------------------------------
-total_servicios = int(df_filtered['Servicios_Count'].sum())
+total_servicios = len(df_filtered)
 
-# Filtro estricto que garantiza los 969 únicos generales de la columna X
-df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1].copy()
+# Obtenemos participantes únicos deduplicando por Case_ID (manteniendo su primera aparición demográfica)
+df_unicos_rows = df_filtered.drop_duplicates(subset=['Case_ID']).copy()
 total_unicos = len(df_unicos_rows)
 
 pct_meta_servicios = (
@@ -349,7 +344,7 @@ col_d.metric('Participantes con Discapacidad', f'{conteo_disc:,}')
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# GRÁFICOS BASADOS EXCLUSIVAMENTE EN PARTICIPANTES ÚNICOS (Columna X)
+# GRÁFICOS BASADOS EN PARTICIPANTES ÚNICOS
 # -----------------------------------------------------------------------------
 g1, g2 = st.columns(2)
 
@@ -420,7 +415,7 @@ with g2:
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# MAPA INTERACTIVO (Basado en Participantes Únicos)
+# MAPA INTERACTIVO
 # -----------------------------------------------------------------------------
 st.subheader('Mapa de Cobertura por Municipios Atendidos')
 
