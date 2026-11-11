@@ -148,21 +148,24 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
-# MAPA EXCLUSIVO DE ACTIVIDADES E INDICADORES OPERATIVOS (Se excluyen OB-1 y OB-2)
-MAPA_INDICADORES_AICS = {
-    '1.1': 'Indicador 1.1: N.º de personas con artículos esenciales de higiene',
-    '1.2': 'Indicador 1.2: N.º de personas con acceso a agua potable (15L/día)',
-    '1.3': 'Indicador 1.3: % Personas con discapacidad con WASH adaptadas',
-    '2.1': 'Indicador 2.1: N.º de niños y niñas con apoyo psicosocial / CFS',
-    '2.2': 'Indicador 2.2: % Población con conocimiento de prevención VBG',
-    '2.3': 'Indicador 2.3: N.º de personas con medidas de protección y prevención',
-    'r1a4': 'R1A4: Fortalecimiento capacidades (WASH/Dignidad)',
-    'r1a5': 'R1A5: Sesiones informativas y sensibilización',
-    'r2a2': 'R2A2: Gestión de casos y asistencia personalizada',
-    'r2a4': 'R2A4: Sesión VBG y protección niñez',
+# MAPA EXCLUSIVO DE ACTIVIDADES OFICIALES DEL PROYECTO AICS
+MAPA_ACTIVIDADES_AICS = {
+    '1.1': (
+        'Actividad 1.1: Promoción de higiene y distribución de artículos'
+        ' esenciales'
+    ),
+    '1.2': 'Actividad 1.2: Acceso a agua potable y mejora de sistemas WASH',
+    '1.3': 'Actividad 1.3: Adaptación de instalaciones WASH para personas con discapacidad',
+    '2.1': 'Actividad 2.1: Servicios de apoyo psicosocial y Espacios Amigables (CFS)',
+    '2.2': 'Actividad 2.2: Talleres de prevención de violencia basada en género (VBG)',
+    '2.3': 'Actividad 2.3: Medidas específicas de protección y prevención de casos',
+    'r1a4': 'R1A4: Fortalecimiento de capacidades comunitarias (WASH/Dignidad)',
+    'r1a5': 'R1A5: Sesiones informativas y de sensibilización comunitaria',
+    'r2a2': 'R2A2: Gestión de casos y asistencia de protección personalizada',
+    'r2a4': 'R2A4: Sesiones especializadas en VBG y protección de la niñez',
 }
 
-METAS_INDICADORES_AICS = {
+METAS_ACTIVIDADES_AICS = {
     '1.1': {'meta': 4800, 'tipo': 'numero'},
     '1.2': {'meta': 2000, 'tipo': 'numero'},
     '1.3': {'meta': 100, 'tipo': 'porcentaje'},
@@ -289,7 +292,7 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
             row.get('ID_indicador') or row.get('group_act.Indicador:') or '1.1'
         ).strip().lower()
         ind_val = '1.1'
-        for k_ind in MAPA_INDICADORES_AICS.keys():
+        for k_ind in MAPA_ACTIVIDADES_AICS.keys():
             if k_ind in ind_val_raw:
                 ind_val = k_ind
                 break
@@ -320,7 +323,7 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
             'Municipio': muni,
             'Campamento': campamento,
             'Sector': sector,
-            'Actividad': actividad_texto,
+            'Actividad_Texto': actividad_texto,
             'Tipo_Servicio_Proteccion': tipo_serv,
             'ID_Unico': id_unico,
             'Sexo': sexo,
@@ -578,43 +581,43 @@ st_folium(mapa, width='stretch', height=450)
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CÁLCULO DINÁMICO DE RESULTADOS EXCLUSIVAMENTE PARA ACTIVIDADES E INDICADORES
+# CÁLCULO DINÁMICO EXCLUSIVO PARA ACTIVIDADES DEL PROYECTO
 # -----------------------------------------------------------------------------
 resultados_dinamicos = (
     df_raw.groupby('Indicador')['Unicos_General'].sum().to_dict()
 )
 
-todos_inds = []
-for k, nombre in MAPA_INDICADORES_AICS.items():
+todos_acts = []
+for k, nombre_act in MAPA_ACTIVIDADES_AICS.items():
     res_val = int(resultados_dinamicos.get(k, 0))
-    meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
-    tipo_meta = METAS_INDICADORES_AICS.get(k, {'tipo': 'numero'})['tipo']
+    meta_val = METAS_ACTIVIDADES_AICS.get(k, {'meta': 100})['meta']
+    tipo_meta = METAS_ACTIVIDADES_AICS.get(k, {'tipo': 'numero'})['tipo']
 
     if tipo_meta == 'porcentaje':
         alc = res_val if res_val <= meta_val else 100.0
     else:
         alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
 
-    todos_inds.append({
+    todos_acts.append({
         'Codigo': k.upper(),
-        'Indicador': nombre,
+        'Actividad': nombre_act,
         'Resultado_Mes': res_val,
         'Meta': meta_val,
         '% Avance': f'{alc:.1f}%',
     })
 
-summary_final = pd.DataFrame(todos_inds)
+summary_final = pd.DataFrame(todos_acts)
 summary_final = summary_final.sort_values(by='Codigo', ascending=False)
 
 # -----------------------------------------------------------------------------
 # REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (ACTIVIDADES)
 # -----------------------------------------------------------------------------
-st.subheader('Alcance de Actividades e Indicadores (Resultado del Mes vs Meta)')
+st.subheader('Alcance de Actividades del Proyecto (Resultado del Mes vs Meta)')
 
 fig_ind = go.Figure()
 fig_ind.add_trace(
     go.Bar(
-        y=summary_final['Indicador'],
+        y=summary_final['Actividad'],
         x=summary_final['Resultado_Mes'],
         name='Resultado del Mes',
         orientation='h',
@@ -625,7 +628,7 @@ fig_ind.add_trace(
 )
 fig_ind.add_trace(
     go.Bar(
-        y=summary_final['Indicador'],
+        y=summary_final['Actividad'],
         x=summary_final['Meta'],
         name='Meta Oficial',
         orientation='h',
@@ -637,19 +640,19 @@ fig_ind.add_trace(
 
 fig_ind.update_layout(
     barmode='group',
-    title='Comparativa por Actividad / Indicador: Resultado del Mes vs Meta',
+    title='Comparativa por Actividad: Resultado del Mes vs Meta',
     font=font_layout,
     xaxis_title='Cantidad / Porcentaje',
-    yaxis_title='Actividad / Indicador',
+    yaxis_title='Actividad',
     legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
     height=650,
 )
 
 st.plotly_chart(fig_ind, width='stretch')
 
-st.markdown('#### Detalle de Avance por Actividad e Indicador')
+st.markdown('#### Detalle de Avance por Actividad')
 st.dataframe(
-    summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']],
+    summary_final[['Codigo', 'Actividad', 'Resultado_Mes', 'Meta', '% Avance']],
     width='stretch',
     hide_index=True,
 )
