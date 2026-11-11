@@ -148,9 +148,8 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
+# MAPA EXCLUSIVO DE ACTIVIDADES E INDICADORES OPERATIVOS (Se excluyen OB-1 y OB-2)
 MAPA_INDICADORES_AICS = {
-    'ob-1': 'OB-1: % Asistencia humanitaria segura y participativa',
-    'ob-2': 'OB-2: % Acceso a agua y servicios higiénico-sanitarios',
     '1.1': 'Indicador 1.1: N.º de personas con artículos esenciales de higiene',
     '1.2': 'Indicador 1.2: N.º de personas con acceso a agua potable (15L/día)',
     '1.3': 'Indicador 1.3: % Personas con discapacidad con WASH adaptadas',
@@ -164,8 +163,6 @@ MAPA_INDICADORES_AICS = {
 }
 
 METAS_INDICADORES_AICS = {
-    'ob-1': {'meta': 85, 'tipo': 'porcentaje'},
-    'ob-2': {'meta': 85, 'tipo': 'porcentaje'},
     '1.1': {'meta': 4800, 'tipo': 'numero'},
     '1.2': {'meta': 2000, 'tipo': 'numero'},
     '1.3': {'meta': 100, 'tipo': 'porcentaje'},
@@ -581,7 +578,7 @@ st_folium(mapa, width='stretch', height=450)
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CÁLCULO DINÁMICO DE RESULTADOS POR INDICADOR DESDE LA BBDD
+# CÁLCULO DINÁMICO DE RESULTADOS EXCLUSIVAMENTE PARA ACTIVIDADES E INDICADORES
 # -----------------------------------------------------------------------------
 resultados_dinamicos = (
     df_raw.groupby('Indicador')['Unicos_General'].sum().to_dict()
@@ -610,9 +607,9 @@ summary_final = pd.DataFrame(todos_inds)
 summary_final = summary_final.sort_values(by='Codigo', ascending=False)
 
 # -----------------------------------------------------------------------------
-# REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (INDICADORES Y ACTIVIDADES)
+# REPORTE Y COMPARATIVA: GRÁFICO DE BARRAS HORIZONTAL (ACTIVIDADES)
 # -----------------------------------------------------------------------------
-st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
+st.subheader('Alcance de Actividades e Indicadores (Resultado del Mes vs Meta)')
 
 fig_ind = go.Figure()
 fig_ind.add_trace(
@@ -640,17 +637,17 @@ fig_ind.add_trace(
 
 fig_ind.update_layout(
     barmode='group',
-    title='Comparativa por Indicador / Actividad: Resultado del Mes vs Meta',
+    title='Comparativa por Actividad / Indicador: Resultado del Mes vs Meta',
     font=font_layout,
     xaxis_title='Cantidad / Porcentaje',
-    yaxis_title='Indicador / Actividad',
+    yaxis_title='Actividad / Indicador',
     legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
     height=650,
 )
 
 st.plotly_chart(fig_ind, width='stretch')
 
-st.markdown('#### Detalle de Avance por Indicador y Actividad')
+st.markdown('#### Detalle de Avance por Actividad e Indicador')
 st.dataframe(
     summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']],
     width='stretch',
