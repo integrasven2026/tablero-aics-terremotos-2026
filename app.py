@@ -98,7 +98,8 @@ with col_header_logo:
 
 st.markdown('---')
 
-# META OFICIAL DEL PROYECTO (Participantes Únicos Verificados: 969)
+# META OFICIAL DEL PROYECTO (4,800 participantes impactados por servicios)
+META_PARTICIPANTES_SERVICIOS = 4800
 META_PARTICIPANTES_UNICOS = 969
 
 MESES_ES = {
@@ -164,16 +165,16 @@ MAPA_INDICADORES_AICS = {
 METAS_INDICADORES_AICS = {
     'ob-1': {'meta': 85, 'tipo': 'porcentaje'},
     'ob-2': {'meta': 85, 'tipo': 'porcentaje'},
-    '1.1': {'meta': 969, 'tipo': 'numero'},
-    '1.2': {'meta': 500, 'tipo': 'numero'},
+    '1.1': {'meta': 4800, 'tipo': 'numero'},
+    '1.2': {'meta': 2000, 'tipo': 'numero'},
     '1.3': {'meta': 100, 'tipo': 'porcentaje'},
-    '2.1': {'meta': 400, 'tipo': 'numero'},
+    '2.1': {'meta': 1580, 'tipo': 'numero'},
     '2.2': {'meta': 75, 'tipo': 'porcentaje'},
-    '2.3': {'meta': 800, 'tipo': 'numero'},
-    'r1a4': {'meta': 400, 'tipo': 'numero'},
-    'r1a5': {'meta': 500, 'tipo': 'numero'},
+    '2.3': {'meta': 4134, 'tipo': 'numero'},
+    'r1a4': {'meta': 2200, 'tipo': 'numero'},
+    'r1a5': {'meta': 2500, 'tipo': 'numero'},
     'r2a2': {'meta': 195, 'tipo': 'numero'},
-    'r2a4': {'meta': 400, 'tipo': 'numero'},
+    'r2a4': {'meta': 1500, 'tipo': 'numero'},
 }
 
 RESULTADOS_CALCULADOS_USUARIO = {
@@ -206,7 +207,7 @@ def normalizar_sexo(valor):
         return 'Mujer'
     elif any(x in s for x in ['hom', 'masc', 'hombre', 'masculino', '1', 'h']):
         return 'Hombre'
-    return 'Mujer'
+    return 'Otro'
 
 
 def normalizar_discapacidad(valor):
@@ -265,7 +266,10 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
         tipo_serv = clasificar_servicio_por_usuario(row.get('group_act.Actividad:') or '')
         id_unico = f'ID_{codigo_id}'
 
-        sexo = normalizar_sexo(row.get('Sexo') or row.get('ID_sexo') or 'Mujer')
+        # Columna K (índice 10) para el Sexo exacto
+        val_col_k = row.iloc[10] if len(row) > 10 else (row.get('Sexo') or 'Mujer')
+        sexo = normalizar_sexo(val_col_k)
+
         rango_etario = limpiar_texto(row.get('rango_etario') or '18 a 49 años')
         discapacidad = normalizar_discapacidad(row.get('Persona con Discapacidad') or row.get('CONDICION') or 'No')
 
@@ -276,8 +280,7 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
                 ind_val = k_ind
                 break
 
-        # Extracción exacta de la columna BENEFICIARIOS UNICOS GENERAL (Columna índice 37)
-        # Contiene 1 en la primera aparición de cada participante único y NaN/0 en las demás
+        # Unicidad general (Columna índice 37)
         val_unicos_gen = 0
         try:
             val_col37 = row.iloc[37] if len(row) > 37 else 0
@@ -358,23 +361,24 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE (Servicios vs Participantes Únicos exactos de la columna)
+# MÉTRICAS CLAVE
 # -----------------------------------------------------------------------------
 total_servicios = int(df_filtered['Servicios_Count'].sum())
 total_unicos = int(df_filtered['Unicos_General'].sum())
 
-pct_meta = (
-    (total_unicos / META_PARTICIPANTES_UNICOS) * 100
-    if META_PARTICIPANTES_UNICOS > 0
+# Meta de servicios impactados = 4800
+pct_meta_servicios = (
+    (total_servicios / META_PARTICIPANTES_SERVICIOS) * 100
+    if META_PARTICIPANTES_SERVICIOS > 0
     else 0
 )
 
-# Filtramos solo los registros únicos (donde Unicos_General == 1) para demografía y discapacidad
 df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1]
 
 conteo_sexo = df_unicos_rows.groupby('Sexo')['Unicos_General'].sum() if not df_unicos_rows.empty else pd.Series()
 total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
+total_otro = int(conteo_sexo.get('Otro', 0))
 
 conteo_disc = df_unicos_rows.groupby('Discapacidad')['Unicos_General'].sum() if not df_unicos_rows.empty else pd.Series()
 total_discapacidad = int(conteo_disc.get('Sí', 0))
@@ -383,9 +387,9 @@ col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
 col2.metric('Participantes Únicos', f'{total_unicos:,}')
 col3.metric(
-    '% Alcance de la Meta (969 pers.)',
-    f'{pct_meta:.2f}%',
-    delta=f'{total_unicos:,} / {META_PARTICIPANTES_UNICOS:,}',
+    '% Alcance de la Meta (4.800 serv.)',
+    f'{pct_meta_servicios:.2f}%',
+    delta=f'{total_servicios:,} / {META_PARTICIPANTES_SERVICIOS:,}',
 )
 
 col_m, col_h, col_d = st.columns(3)
@@ -532,4 +536,96 @@ st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
 todos_inds = []
 for k, nombre in MAPA_INDICADORES_AICS.items():
     res_val = RESULTADOS_CALCULADOS_USUARIO.get(k, 0)
-    meta_val = METAS_
+    meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
+    alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
+    todos_inds.append({
+        'Codigo': k.upper(),
+        'Indicador': nombre,
+        'Resultado_Mes': res_val,
+        'Meta': meta_val,
+        '% Avance': f'{alc:.1f}%'
+    })
+
+summary_final = pd.DataFrame(todos_inds)
+summary_final = summary_final.sort_values(by='Codigo', ascending=False)
+
+fig_ind = go.Figure()
+fig_ind.add_trace(go.Bar(
+    y=summary_final['Indicador'],
+    x=summary_final['Resultado_Mes'],
+    name='Resultado del Mes',
+    orientation='h',
+    text=summary_final['Resultado_Mes'],
+    textposition='outside',
+    marker_color=COLOR_VERDE_COOPI
+))
+fig_ind.add_trace(go.Bar(
+    y=summary_final['Indicador'],
+    x=summary_final['Meta'],
+    name='Meta Oficial',
+    orientation='h',
+    text=summary_final['Meta'],
+    textposition='outside',
+    marker_color=COLOR_AZUL_COOPI
+))
+
+fig_ind.update_layout(
+    barmode='group',
+    title='Comparativa por Indicador / Actividad: Resultado del Mes vs Meta',
+    font=font_layout,
+    xaxis_title='Cantidad / Porcentaje',
+    yaxis_title='Indicador / Actividad',
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    height=650
+)
+
+st.plotly_chart(fig_ind, width='stretch')
+
+st.markdown('#### Detalle de Avance por Indicador y Actividad')
+st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
+
+st.markdown('---')
+
+# -----------------------------------------------------------------------------
+# CAPÍTULO: RESULTADO DE PROTECCIÓN (Año 2026, Proyecto AICS)
+# -----------------------------------------------------------------------------
+st.subheader('Resultado de protección')
+
+if not df_prot_kobo.empty:
+    df_proteccion_2026 = df_prot_kobo[
+        df_prot_kobo['Fecha_DT'].dt.year == 2026
+    ].copy() if 'Fecha_DT' in df_prot_kobo.columns else df_prot_kobo.copy()
+    
+    if not df_proteccion_2026.empty:
+        total_casos_prot = len(df_proteccion_2026)
+
+        df_servicios_count = (
+            df_proteccion_2026.groupby('Tipo_Servicio_Proteccion', as_index=False)
+            .size()
+            .rename(columns={'size': 'Cantidad_Unicos'})
+        )
+
+        col_p1, col_p2 = st.columns(2)
+        col_p1.metric('Total de Casos', f'{total_casos_prot:,}')
+        col_p2.metric('Participantes Únicos', f'{total_casos_prot:,}')
+
+        fig_prot = px.bar(
+            df_servicios_count,
+            x='Tipo_Servicio_Proteccion',
+            y='Cantidad_Unicos',
+            text='Cantidad_Unicos',
+            color='Tipo_Servicio_Proteccion',
+            color_discrete_sequence=PALETA_COOPI,
+        )
+        fig_prot.update_traces(textposition='outside')
+        fig_prot.update_layout(
+            showlegend=False,
+            font=font_layout,
+            xaxis_title='Tipo de Servicio de Protección',
+            yaxis_title='Cantidad de Casos',
+        )
+        st.plotly_chart(fig_prot, width='stretch')
+    else:
+        st.info('No hay registros de servicios de protección para el año 2026 bajo el proyecto AICS.')
+else:
+    st.info('No hay datos disponibles para el capítulo de protección.')
