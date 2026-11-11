@@ -276,14 +276,16 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
                 ind_val = k_ind
                 break
 
-        # Ponderación basada en la unicidad oficial del Excel (Columna índice 37: BENEFICIARIOS UNICOS GENERAL)
-        pond_unico = 1
+        # Extracción exacta de la columna BENEFICIARIOS UNICOS GENERAL (Columna índice 37)
+        # Contiene 1 en la primera aparición de cada participante único y NaN/0 en las demás
+        val_unicos_gen = 0
         try:
-            val_col37 = row.iloc[37] if len(row) > 37 else 1
-            if pd.notnull(val_col37) and str(val_col37).replace('.', '', 1).isdigit():
-                pond_unico = int(float(val_col37))
+            val_col37 = row.iloc[37] if len(row) > 37 else 0
+            val_num = float(val_col37)
+            if val_num == 1.0:
+                val_unicos_gen = 1
         except Exception:
-            pond_unico = 1
+            val_unicos_gen = 0
 
         registros.append({
             '_id': row.get('_index', idx),
@@ -298,8 +300,8 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
             'Rango_Etario': rango_etario,
             'Discapacidad': discapacidad,
             'Indicador': ind_val,
-            'Ponderacion_Servicios': 1,
-            'Ponderacion_Unicos': pond_unico,
+            'Servicios_Count': 1,
+            'Unicos_General': val_unicos_gen,
             'Case_ID': codigo_id
         })
 
@@ -356,10 +358,10 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE (Servicios vs Participantes Únicos)
+# MÉTRICAS CLAVE (Servicios vs Participantes Únicos exactos de la columna)
 # -----------------------------------------------------------------------------
-total_servicios = int(df_filtered['Ponderacion_Servicios'].sum())
-total_unicos = int(df_filtered.drop_duplicates(subset=['ID_Unico'])['Ponderacion_Unicos'].sum())
+total_servicios = int(df_filtered['Servicios_Count'].sum())
+total_unicos = int(df_filtered['Unicos_General'].sum())
 
 pct_meta = (
     (total_unicos / META_PARTICIPANTES_UNICOS) * 100
@@ -367,12 +369,14 @@ pct_meta = (
     else 0
 )
 
-df_unicos_filtrado = df_filtered.drop_duplicates(subset=['ID_Unico'])
-conteo_sexo = df_unicos_filtrado.groupby('Sexo')['Ponderacion_Unicos'].sum() if not df_unicos_filtrado.empty else pd.Series()
+# Filtramos solo los registros únicos (donde Unicos_General == 1) para demografía y discapacidad
+df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1]
+
+conteo_sexo = df_unicos_rows.groupby('Sexo')['Unicos_General'].sum() if not df_unicos_rows.empty else pd.Series()
 total_mujeres = int(conteo_sexo.get('Mujer', 0))
 total_hombres = int(conteo_sexo.get('Hombre', 0))
 
-conteo_disc = df_unicos_filtrado.groupby('Discapacidad')['Ponderacion_Unicos'].sum() if not df_unicos_filtrado.empty else pd.Series()
+conteo_disc = df_unicos_rows.groupby('Discapacidad')['Unicos_General'].sum() if not df_unicos_rows.empty else pd.Series()
 total_discapacidad = int(conteo_disc.get('Sí', 0))
 
 col1, col2, col3 = st.columns(3)
@@ -398,9 +402,9 @@ g1, g2 = st.columns(2)
 
 with g1:
     st.subheader('Participantes Únicos por Rango Etario y Sexo')
-    if not df_unicos_filtrado.empty and 'Rango_Etario' in df_unicos_filtrado.columns:
+    if not df_unicos_rows.empty and 'Rango_Etario' in df_unicos_rows.columns:
         df_demo = (
-            df_unicos_filtrado.groupby(['Rango_Etario', 'Sexo'])['Ponderacion_Unicos']
+            df_unicos_rows.groupby(['Rango_Etario', 'Sexo'])['Unicos_General']
             .sum()
             .reset_index(name='Cantidad')
         )
@@ -436,9 +440,9 @@ with g1:
 
 with g2:
     st.subheader('Participantes Únicos por Municipio')
-    if not df_unicos_filtrado.empty and 'Municipio' in df_unicos_filtrado.columns:
+    if not df_unicos_rows.empty and 'Municipio' in df_unicos_rows.columns:
         df_muni = (
-            df_unicos_filtrado.groupby(['Estado', 'Municipio'])['Ponderacion_Unicos']
+            df_unicos_rows.groupby(['Estado', 'Municipio'])['Unicos_General']
             .sum()
             .reset_index(name='Cantidad')
         )
@@ -471,10 +475,10 @@ mapa = folium.Map(
     location=[10.40, -66.90], zoom_start=10, tiles='OpenStreetMap'
 )
 
-if not df_unicos_filtrado.empty:
+if not df_unicos_rows.empty:
     muni_resumen = []
-    for (est, mun), grupo in df_unicos_filtrado.groupby(['Estado', 'Municipio']):
-        tot = int(grupo['Ponderacion_Unicos'].sum())
+    for (est, mun), grupo in df_unicos_rows.groupby(['Estado', 'Municipio']):
+        tot = int(grupo['Unicos_General'].sum())
         campamentos = sorted([c for c in grupo['Campamento'].dropna().unique() if c and c != 'No especificado'])
         campamentos_str = "<br>".join([f"- {c}" for c in campamentos])
         if not campamentos_str:
@@ -528,96 +532,4 @@ st.subheader('Alcance de Indicadores y Actividades (Resultado del Mes vs Meta)')
 todos_inds = []
 for k, nombre in MAPA_INDICADORES_AICS.items():
     res_val = RESULTADOS_CALCULADOS_USUARIO.get(k, 0)
-    meta_val = METAS_INDICADORES_AICS.get(k, {'meta': 100})['meta']
-    alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
-    todos_inds.append({
-        'Codigo': k.upper(),
-        'Indicador': nombre,
-        'Resultado_Mes': res_val,
-        'Meta': meta_val,
-        '% Avance': f'{alc:.1f}%'
-    })
-
-summary_final = pd.DataFrame(todos_inds)
-summary_final = summary_final.sort_values(by='Codigo', ascending=False)
-
-fig_ind = go.Figure()
-fig_ind.add_trace(go.Bar(
-    y=summary_final['Indicador'],
-    x=summary_final['Resultado_Mes'],
-    name='Resultado del Mes',
-    orientation='h',
-    text=summary_final['Resultado_Mes'],
-    textposition='outside',
-    marker_color=COLOR_VERDE_COOPI
-))
-fig_ind.add_trace(go.Bar(
-    y=summary_final['Indicador'],
-    x=summary_final['Meta'],
-    name='Meta Oficial',
-    orientation='h',
-    text=summary_final['Meta'],
-    textposition='outside',
-    marker_color=COLOR_AZUL_COOPI
-))
-
-fig_ind.update_layout(
-    barmode='group',
-    title='Comparativa por Indicador / Actividad: Resultado del Mes vs Meta',
-    font=font_layout,
-    xaxis_title='Cantidad / Porcentaje',
-    yaxis_title='Indicador / Actividad',
-    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-    height=650
-)
-
-st.plotly_chart(fig_ind, width='stretch')
-
-st.markdown('#### Detalle de Avance por Indicador y Actividad')
-st.dataframe(summary_final[['Codigo', 'Indicador', 'Resultado_Mes', 'Meta', '% Avance']], width='stretch', hide_index=True)
-
-st.markdown('---')
-
-# -----------------------------------------------------------------------------
-# CAPÍTULO: RESULTADO DE PROTECCIÓN (Año 2026, Proyecto AICS)
-# -----------------------------------------------------------------------------
-st.subheader('Resultado de protección')
-
-if not df_prot_kobo.empty:
-    df_proteccion_2026 = df_prot_kobo[
-        df_prot_kobo['Fecha_DT'].dt.year == 2026
-    ].copy() if 'Fecha_DT' in df_prot_kobo.columns else df_prot_kobo.copy()
-    
-    if not df_proteccion_2026.empty:
-        total_casos_prot = len(df_proteccion_2026)
-
-        df_servicios_count = (
-            df_proteccion_2026.groupby('Tipo_Servicio_Proteccion', as_index=False)
-            .size()
-            .rename(columns={'size': 'Cantidad_Unicos'})
-        )
-
-        col_p1, col_p2 = st.columns(2)
-        col_p1.metric('Total de Casos', f'{total_casos_prot:,}')
-        col_p2.metric('Participantes Únicos', f'{total_casos_prot:,}')
-
-        fig_prot = px.bar(
-            df_servicios_count,
-            x='Tipo_Servicio_Proteccion',
-            y='Cantidad_Unicos',
-            text='Cantidad_Unicos',
-            color='Tipo_Servicio_Proteccion',
-            color_discrete_sequence=PALETA_COOPI,
-        )
-        fig_prot.update_traces(textposition='outside')
-        fig_prot.update_layout(
-            showlegend=False,
-            font=font_layout,
-            xaxis_title='Tipo de Servicio de Protección',
-            yaxis_title='Cantidad de Casos',
-        )
-        st.plotly_chart(fig_prot, width='stretch')
-    else:
-        st.info('No hay registros de servicios de protección para el año 2026 bajo el proyecto AICS.')
-else:
-    st.info('No hay datos disponibles para el capítulo de protección.')
+    meta_val = METAS_
