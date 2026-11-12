@@ -471,7 +471,7 @@ col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS
+# GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS (CON PORCENTAJES)
 # -----------------------------------------------------------------------------
 g1, g2 = st.columns(2)
 
@@ -482,6 +482,17 @@ with g1:
             df_unicos_rows.groupby(['Rango_Etario', 'Sexo'])['Unicos_General']
             .sum()
             .reset_index(name='Cantidad')
+        )
+
+        total_global_unicos = df_demo['Cantidad'].sum()
+        df_demo['Porcentaje'] = (
+            (df_demo['Cantidad'] / total_global_unicos) * 100
+        ).round(1)
+        df_demo['Texto_Etiqueta'] = (
+            df_demo['Cantidad'].astype(str)
+            + ' ('
+            + df_demo['Porcentaje'].astype(str)
+            + '%)'
         )
 
         orden_etario = {
@@ -501,7 +512,7 @@ with g1:
             y='Cantidad',
             color='Sexo',
             barmode='group',
-            text='Cantidad',
+            text='Texto_Etiqueta',
             color_discrete_sequence=PALETA_COOPI,
         )
         fig_demo.update_traces(textposition='outside')
@@ -523,6 +534,17 @@ with g2:
             .sum()
             .reset_index(name='Cantidad')
         )
+        total_global_unicos_muni = df_muni['Cantidad'].sum()
+        df_muni['Porcentaje'] = (
+            (df_muni['Cantidad'] / total_global_unicos_muni) * 100
+        ).round(1)
+        df_muni['Texto_Etiqueta'] = (
+            df_muni['Cantidad'].astype(str)
+            + ' ('
+            + df_muni['Porcentaje'].astype(str)
+            + '%)'
+        )
+
         df_muni = df_muni.sort_values(by='Cantidad', ascending=True)
         fig_muni = px.bar(
             df_muni,
@@ -530,7 +552,7 @@ with g2:
             x='Cantidad',
             color='Estado',
             orientation='h',
-            text='Cantidad',
+            text='Texto_Etiqueta',
             color_discrete_sequence=PALETA_COOPI,
         )
         fig_muni.update_traces(textposition='outside')
