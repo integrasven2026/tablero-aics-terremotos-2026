@@ -29,7 +29,7 @@ PALETA_COOPI = [
 # 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title='Tablero AICS | Emergencia Terremotos Venezuela',
+    page_title='Tablero AICS | Monitoring Tool ITT',
     layout='wide',
     initial_sidebar_state='expanded',
 )
@@ -68,9 +68,8 @@ col_header_title, col_header_logo = st.columns([3, 1])
 
 with col_header_title:
     st.markdown(
-        "<h1 class='titulo-principal'>Tablero de Monitoreo Proyecto Intervención"
-        ' de emergencia en respuesta a la crisis en Venezuela tras los'
-        ' terremotos - Venezuela Proyecto AICS</h1>',
+        "<h1 class='titulo-principal'>Tablero de Monitoreo Monitoring Tool"
+        ' (ITT) - Proyecto AICS Venezuela</h1>',
         unsafe_allow_html=True,
     )
 
@@ -99,7 +98,6 @@ with col_header_logo:
 
 st.markdown('---')
 
-# METAS OFICIALES DEL PROYECTO
 META_PARTICIPANTES_SERVICIOS = 4800
 META_PARTICIPANTES_UNICOS = 966
 
@@ -148,40 +146,6 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
-# ACTIVIDADES OFICIALES SEGÚN LA BASE DE DATOS
-MAPA_ACTIVIDADES_AICS = {
-    'Actividad 1.2: Promoción de buenas prácticas de higiene y tutela de la dignidad': {
-        'codigo': '1.2',
-        'meta': 2000,
-        'tipo': 'numero',
-    },
-    'Actividad 2.1: Servicios de apoyo psicosocial (grupal)': {
-        'codigo': '2.1 (Grupal)',
-        'meta': 1580,
-        'tipo': 'numero',
-    },
-    'Actividad 2.1: Servicios de apoyo psicosocial (individual)': {
-        'codigo': '2.1 (Ind.)',
-        'meta': 300,
-        'tipo': 'numero',
-    },
-    'Actividad 2.2: Identificación y gestión de casos y asistencia de protección personalizada para las personas más vulnerables alojadas en centros de acogida temporales seleccionados.': {
-        'codigo': '2.2',
-        'meta': 195,
-        'tipo': 'numero',
-    },
-    'Actividad 2.3: Creación de espacios a medida de los niños (Child Friendly Spaces)': {
-        'codigo': '2.3',
-        'meta': 4134,
-        'tipo': 'numero',
-    },
-    'Actividad 2.5: Asistencia legal para la obtención de documentos de identidad': {
-        'codigo': '2.5',
-        'meta': 500,
-        'tipo': 'numero',
-    },
-}
-
 font_layout = dict(family='Quicksand', size=13)
 
 
@@ -199,170 +163,175 @@ def clasificar_servicio(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE EL EXCEL OFICIAL CORREGIDO (HEADER=0)
+# 2. CARGA DE DATOS (DESDE MONITORING TOOL Y BBDD)
 # -----------------------------------------------------------------------------
 @st.cache_data
-def cargar_datos_excel(
-    excel_path='BBDD_SIGA_AICS_Noviembre_2026_Corregido-v1.xlsx',
+def cargar_datos_monitoreo(
+    excel_path='Monitoring_tool_AICS_ (5).xlsx',
 ):
     if not os.path.exists(excel_path):
-        excel_path = 'BBDD SIGA AICS Noviembre_2026_tablero_.xlsx'
+        excel_path = 'BBDD_SIGA_AICS_Noviembre_2026_Corregido-v1.xlsx'
 
     if not os.path.exists(excel_path):
-        st.warning('⚠️ No se encontró ningún archivo Excel en la raíz del repositorio.')
-        return pd.DataFrame()
+        st.warning('⚠️ No se encontró el archivo Excel de monitoreo en la raíz.')
+        return pd.DataFrame(), pd.DataFrame()
 
     try:
         xls = pd.ExcelFile(excel_path)
-        sheet_name = (
+
+        # 1. Cargar ITT (Tabla de indicadores)
+        if 'Tabla de indicadores (ITT)' in xls.sheet_names:
+            df_itt_raw = pd.read_excel(
+                xls, sheet_name='Tabla de indicadores (ITT)', header=None
+            )
+            itt_records = []
+            for i in range(11, len(df_itt_raw)):
+                row = df_itt_raw.iloc[i].values
+                desc = str(row[3]) if pd.notnull(row[3]) else ''
+                if desc and desc != 'nan':
+                    tipo = str(row[4]) if pd.notnull(row[4]) else ''
+                    meta = float(row[6]) if pd.notnull(row[6]) else 0.0
+                    real = float(row[29]) if pd.notnull(row[29]) else 0.0
+                    itt_records.append({
+                        'Indicador_Actividad': desc,
+                        'Tipo': tipo,
+                        'Meta': meta,
+                        'Real': real,
+                    })
+            df_itt = pd.DataFrame(itt_records)
+        else:
+            df_itt = pd.DataFrame()
+
+        # 2. Cargar datos de beneficiarios (de group_beneficiario o similar)
+        sheet_b = (
             'group_beneficiario'
             if 'group_beneficiario' in xls.sheet_names
             else xls.sheet_names[0]
         )
-        df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=0)
+        if 'group_beneficiario' in xls.sheet_names:
+            df_raw = pd.read_excel(xls, sheet_name='group_beneficiario', header=0)
+        else:
+            # Intentar buscar otra hoja útil
+            df_raw = pd.DataFrame()
+
     except Exception as e:
-        st.error(f'Error al leer el archivo Excel: {e}')
-        return pd.DataFrame()
+        st.error(f'Error al leer el archivo Monitoring Tool: {e}')
+        return pd.DataFrame(), pd.DataFrame()
 
-    df_raw.columns = df_raw.columns.str.strip()
-
-    registros = []
-    for idx, row in df_raw.iterrows():
-        codigo_id = str(
-            row.get('CodigoID') or row.get('CODIGO') or f'ROW_{idx}'
-        ).strip()
-
-        fecha = (
-            row.get('AICS - SISTEMA INTEGRAL DE G.Fecha de la Actividad:')
-            or row.get('Fecha')
-            or '2026-11-01'
-        )
-
-        estado_raw = str(
-            row.get('AICS - SISTEMA INTEGRAL DE G.Estado')
-            or row.get('Estado')
-            or 'Distrito Capital'
-        ).strip()
-        estado = MAPA_ESTADOS.get(estado_raw, estado_raw or 'Distrito Capital')
-
-        muni_raw = str(
-            row.get('AICS - SISTEMA INTEGRAL DE G.Municipio')
-            or row.get('Municipio')
-            or 'Libertador'
-        ).strip()
-        muni = MAPA_MUNICIPIOS.get(muni_raw, muni_raw or 'Libertador')
-
-        campamento = 'No especificado'
-
-        # Clasificación estricta por id_resul oficial (R1 = WASH, R2 = Protección)
-        id_resul_val = str(
-            row.get('AICS - SISTEMA INTEGRAL DE G.id_resul') or ''
-        ).strip().upper()
-        resultado_raw = str(
-            row.get('AICS - SISTEMA INTEGRAL DE G.Resultado:') or ''
-        ).upper()
-
-        if 'R1' in id_resul_val or 'WASH' in resultado_raw:
-            sector = 'WASH'
-        elif (
-            'R2' in id_resul_val
-            or 'PROTECCIÓN' in resultado_raw
-            or 'PROTECCION' in resultado_raw
-        ):
-            sector = 'Protección'
-        else:
-            sector = 'Protección' if 'PROTECCIÓN' in resultado_raw else 'WASH'
-
-        actividad_texto = str(row.get('group_act.Actividad:') or '').strip()
-        tipo_serv = clasificar_servicio(actividad_texto)
-        id_unico = f'ID_{codigo_id}'
-
-        val_sexo = str(row.get('Sexo') or 'Mujer').strip().title()
-        if 'Hombre' in val_sexo or val_sexo == 'H':
-            sexo = 'Hombre'
-        elif 'Mujer' in val_sexo or val_sexo == 'M':
-            sexo = 'Mujer'
-        else:
-            sexo = 'Otro'
-
-        rango_etario = str(
-            row.get('rango_etario') or '18 a 49 años'
-        ).strip().title()
-
-        val_disc = str(
-            row.get('Persona con Discapacidad') or 'No'
-        ).strip().lower()
-        discapacidad = (
-            'Sí'
-            if any(
-                x in val_disc for x in ['sí', 'si', 'yes', 'true', '1']
+    if not df_raw.empty:
+        df_raw.columns = df_raw.columns.str.strip()
+        registros = []
+        for idx, row in df_raw.iterrows():
+            codigo_id = str(
+                row.get('CodigoID') or row.get('CODIGO') or f'ROW_{idx}'
+            ).strip()
+            fecha = (
+                row.get('AICS - SISTEMA INTEGRAL DE G.Fecha de la Actividad:')
+                or row.get('Fecha')
+                or '2026-11-01'
             )
-            else 'No'
-        )
+            estado_raw = str(
+                row.get('AICS - SISTEMA INTEGRAL DE G.Estado')
+                or row.get('Estado')
+                or 'Distrito Capital'
+            ).strip()
+            estado = MAPA_ESTADOS.get(
+                estado_raw, estado_raw or 'Distrito Capital'
+            )
+            muni_raw = str(
+                row.get('AICS - SISTEMA INTEGRAL DE G.Municipio')
+                or row.get('Municipio')
+                or 'Libertador'
+            ).strip()
+            muni = MAPA_MUNICIPIOS.get(muni_raw, muni_raw or 'Libertador')
 
-        ind_val_raw = str(
-            row.get('ID_indicador') or row.get('group_act.Indicador:') or '1.1'
-        ).strip().lower()
-        ind_val = '1.1'
+            id_resul_val = str(
+                row.get('AICS - SISTEMA INTEGRAL DE G.id_resul') or ''
+            ).strip().upper()
+            resultado_raw = str(
+                row.get('AICS - SISTEMA INTEGRAL DE G.Resultado:') or ''
+            ).upper()
+            if 'R1' in id_resul_val or 'WASH' in resultado_raw:
+                sector = 'WASH'
+            else:
+                sector = 'Protección'
 
-        try:
-            val_u = row.get('BENEFICIARIOS UNICOS GENERAL') or 0
-            val_unicos_gen = int(float(val_u))
-            if val_unicos_gen != 1:
+            actividad_texto = str(
+                row.get('group_act.Actividad:') or ''
+            ).strip()
+            tipo_serv = clasificar_servicio(actividad_texto)
+
+            val_sexo = str(row.get('Sexo') or 'Mujer').strip().title()
+            if 'Hombre' in val_sexo or val_sexo == 'H':
+                sexo = 'Hombre'
+            elif 'Mujer' in val_sexo or val_sexo == 'M':
+                sexo = 'Mujer'
+            else:
+                sexo = 'Otro'
+
+            rango_etario = str(
+                row.get('rango_etario') or '18 a 49 años'
+            ).strip().title()
+            val_disc = str(
+                row.get('Persona con Discapacidad') or 'No'
+            ).strip().lower()
+            discapacidad = (
+                'Sí'
+                if any(
+                    x in val_disc for x in ['sí', 'si', 'yes', 'true', '1']
+                )
+                else 'No'
+            )
+
+            try:
+                val_u = row.get('BENEFICIARIOS UNICOS GENERAL') or 0
+                val_unicos_gen = int(float(val_u))
+                if val_unicos_gen != 1:
+                    val_unicos_gen = 0
+            except Exception:
                 val_unicos_gen = 0
-        except Exception:
-            val_unicos_gen = 0
 
-        registros.append({
-            '_id': row.get('_index', idx),
-            'Fecha': fecha,
-            'Estado': estado,
-            'Municipio': muni,
-            'Campamento': campamento,
-            'Sector': sector,
-            'Actividad_Texto': actividad_texto,
-            'Tipo_Servicio_Proteccion': tipo_serv,
-            'ID_Unico': id_unico,
-            'Sexo': sexo,
-            'Rango_Etario': rango_etario,
-            'Discapacidad': discapacidad,
-            'Indicador': ind_val,
-            'Servicios_Count': 1,
-            'Unicos_General': val_unicos_gen,
-            'Case_ID': codigo_id,
-        })
-
-    df = pd.DataFrame(registros)
-    if not df.empty and 'Fecha' in df.columns:
-        df['Fecha_DT'] = pd.to_datetime(df['Fecha'], errors='coerce')
-        df['Mes_Reporte'] = df['Fecha_DT'].apply(
-            lambda x: (
-                f'{x.year} - {MESES_ES.get(x.month, "")}'
-                if pd.notnull(x)
-                else 'Todos'
+            registros.append({
+                'Fecha': fecha,
+                'Estado': estado,
+                'Municipio': muni,
+                'Campamento': 'No especificado',
+                'Sector': sector,
+                'Actividad_Texto': actividad_texto,
+                'Tipo_Servicio_Proteccion': tipo_serv,
+                'Sexo': sexo,
+                'Rango_Etario': rango_etario,
+                'Discapacidad': discapacidad,
+                'Servicios_Count': 1,
+                'Unicos_General': val_unicos_gen,
+            })
+        df_beneficiarios = pd.DataFrame(registros)
+        if not df_beneficiarios.empty and 'Fecha' in df_beneficiarios.columns:
+            df_beneficiarios['Fecha_DT'] = pd.to_datetime(
+                df_beneficiarios['Fecha'], errors='coerce'
             )
-        )
+            df_beneficiarios['Mes_Reporte'] = df_beneficiarios[
+                'Fecha_DT'
+            ].apply(
+                lambda x: (
+                    f'{x.year} - {MESES_ES.get(x.month, "")}'
+                    if pd.notnull(x)
+                    else 'Todos'
+                )
+            )
+        else:
+            df_beneficiarios['Mes_Reporte'] = 'Todos'
     else:
-        df['Mes_Reporte'] = 'Todos'
-    return df
+        df_beneficiarios = pd.DataFrame()
+
+    return df_itt, df_beneficiarios
 
 
-df_raw = cargar_datos_excel()
+df_itt, df_raw = cargar_datos_monitoreo()
 
-if df_raw.empty:
-    st.warning('⚠️ No hay datos disponibles para mostrar en el tablero.')
+if df_itt.empty and df_raw.empty:
+    st.warning('⚠️ No se pudieron cargar los datos del Monitoring Tool.')
     st.stop()
-
-df_wash = (
-    df_raw[df_raw['Sector'] == 'WASH']
-    if 'Sector' in df_raw.columns
-    else pd.DataFrame()
-)
-df_prot_kobo = (
-    df_raw[df_raw['Sector'] == 'Protección']
-    if 'Sector' in df_raw.columns
-    else pd.DataFrame()
-)
 
 # -----------------------------------------------------------------------------
 # FILTROS LATERALES
@@ -375,31 +344,38 @@ if st.sidebar.button('🔄 Actualizar Datos', width='stretch'):
 
 st.sidebar.markdown('---')
 
-meses_unicos = sorted(
-    [m for m in df_raw['Mes_Reporte'].unique() if m != 'Todos']
-)
-meses_disp = ['Todos'] + meses_unicos
-mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp, index=0)
+if not df_raw.empty and 'Mes_Reporte' in df_raw.columns:
+    meses_unicos = sorted(
+        [m for m in df_raw['Mes_Reporte'].unique() if m != 'Todos']
+    )
+    meses_disp = ['Todos'] + meses_unicos
+    mes_sel = st.sidebar.selectbox('Mes del Reporte:', meses_disp, index=0)
 
-sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
-sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp, index=0)
+    sexo_disp = ['Todos', 'Hombre', 'Mujer', 'Otro']
+    sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp, index=0)
 
-rango_disp = ['Todos'] + sorted(df_raw['Rango_Etario'].unique().tolist())
-rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp, index=0)
+    rango_disp = ['Todos'] + sorted(df_raw['Rango_Etario'].unique().tolist())
+    rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp, index=0)
 
-df_filtered = df_raw.copy()
-if mes_sel != 'Todos':
-    df_filtered = df_filtered[df_filtered['Mes_Reporte'] == mes_sel]
-if sexo_sel != 'Todos':
-    df_filtered = df_filtered[df_filtered['Sexo'] == sexo_sel]
-if rango_sel != 'Todos':
-    df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
+    df_filtered = df_raw.copy()
+    if mes_sel != 'Todos':
+        df_filtered = df_filtered[df_filtered['Mes_Reporte'] == mes_sel]
+    if sexo_sel != 'Todos':
+        df_filtered = df_filtered[df_filtered['Sexo'] == sexo_sel]
+    if rango_sel != 'Todos':
+        df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
+else:
+    df_filtered = df_raw.copy()
 
 # -----------------------------------------------------------------------------
 # MÉTRICAS CLAVE
 # -----------------------------------------------------------------------------
-total_servicios = int(df_filtered['Servicios_Count'].sum())
-total_unicos = int(df_filtered['Unicos_General'].sum())
+total_servicios = (
+    int(df_filtered['Servicios_Count'].sum()) if not df_filtered.empty else 0
+)
+total_unicos = (
+    int(df_filtered['Unicos_General'].sum()) if not df_filtered.empty else 0
+)
 
 pct_meta_servicios = (
     (total_servicios / META_PARTICIPANTES_SERVICIOS) * 100
@@ -407,7 +383,11 @@ pct_meta_servicios = (
     else 0
 )
 
-df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1]
+df_unicos_rows = (
+    df_filtered[df_filtered['Unicos_General'] == 1]
+    if not df_filtered.empty
+    else pd.DataFrame()
+)
 
 conteo_sexo = (
     df_unicos_rows.groupby('Sexo')['Unicos_General'].sum()
@@ -425,15 +405,23 @@ conteo_disc = (
 )
 total_discapacidad = int(conteo_disc.get('Sí', 0))
 
-total_unicos_wash = int(
-    df_unicos_rows[df_unicos_rows['Sector'] == 'WASH'][
-        'Unicos_General'
-    ].sum()
+total_unicos_wash = (
+    int(
+        df_unicos_rows[df_unicos_rows['Sector'] == 'WASH'][
+            'Unicos_General'
+        ].sum()
+    )
+    if not df_unicos_rows.empty
+    else 0
 )
-total_unicos_prot = int(
-    df_unicos_rows[df_unicos_rows['Sector'] == 'Protección'][
-        'Unicos_General'
-    ].sum()
+total_unicos_prot = (
+    int(
+        df_unicos_rows[df_unicos_rows['Sector'] == 'Protección'][
+            'Unicos_General'
+        ].sum()
+    )
+    if not df_unicos_rows.empty
+    else 0
 )
 
 col1, col2, col3 = st.columns(3)
@@ -464,25 +452,22 @@ st.markdown('---')
 # -----------------------------------------------------------------------------
 # GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS (PORCENTAJES Y LEYENDA ABAJO)
 # -----------------------------------------------------------------------------
-g1, g2 = st.columns(2)
+if not df_unicos_rows.empty:
+    g1, g2 = st.columns(2)
 
-with g1:
-    st.subheader('Participantes Únicos por Rango Etario y Sexo')
-    if not df_unicos_rows.empty and 'Rango_Etario' in df_unicos_rows.columns:
+    with g1:
+        st.subheader('Participantes Únicos por Rango Etario y Sexo')
         df_demo = (
             df_unicos_rows.groupby(['Rango_Etario', 'Sexo'])['Unicos_General']
             .sum()
             .reset_index(name='Cantidad')
         )
-
         total_global_unicos = df_demo['Cantidad'].sum()
-        if total_global_unicos > 0:
-            df_demo['Porcentaje'] = (
-                (df_demo['Cantidad'] / total_global_unicos) * 100
-            ).round(1)
-        else:
-            df_demo['Porcentaje'] = 0.0
-
+        df_demo['Porcentaje'] = (
+            (df_demo['Cantidad'] / total_global_unicos) * 100
+            if total_global_unicos > 0
+            else 0.0
+        ).round(1)
         df_demo['Texto_Etiqueta'] = (
             df_demo['Cantidad'].astype(str)
             + ' ('
@@ -524,25 +509,20 @@ with g1:
             ),
         )
         st.plotly_chart(fig_demo, width='stretch')
-    else:
-        st.info('No hay datos disponibles para los filtros seleccionados.')
 
-with g2:
-    st.subheader('Participantes Únicos por Municipio')
-    if not df_unicos_rows.empty and 'Municipio' in df_unicos_rows.columns:
+    with g2:
+        st.subheader('Participantes Únicos por Municipio')
         df_muni = (
             df_unicos_rows.groupby(['Estado', 'Municipio'])['Unicos_General']
             .sum()
             .reset_index(name='Cantidad')
         )
-        total_global_unicos_muni = df_muni['Cantidad'].sum()
-        if total_global_unicos_muni > 0:
-            df_muni['Porcentaje'] = (
-                (df_muni['Cantidad'] / total_global_unicos_muni) * 100
-            ).round(1)
-        else:
-            df_muni['Porcentaje'] = 0.0
-
+        total_global_muni = df_muni['Cantidad'].sum()
+        df_muni['Porcentaje'] = (
+            (df_muni['Cantidad'] / total_global_muni) * 100
+            if total_global_muni > 0
+            else 0.0
+        ).round(1)
         df_muni['Texto_Etiqueta'] = (
             df_muni['Cantidad'].astype(str)
             + ' ('
@@ -573,16 +553,13 @@ with g2:
             ),
         )
         st.plotly_chart(fig_muni, width='stretch')
-    else:
-        st.info('No hay datos disponibles.')
 
-st.markdown('---')
+    st.markdown('---')
 
 # -----------------------------------------------------------------------------
 # MAPA INTERACTIVO
 # -----------------------------------------------------------------------------
 st.subheader('Mapa de Cobertura por Municipios Atendidos')
-
 mapa = folium.Map(
     location=[10.40, -66.90], zoom_start=10, tiles='OpenStreetMap'
 )
@@ -608,7 +585,6 @@ if not df_unicos_rows.empty:
         })
 
     df_mapa = pd.DataFrame(muni_resumen)
-
     for _, m_row in df_mapa.iterrows():
         est = m_row['Estado']
         mun = m_row['Municipio']
@@ -641,50 +617,95 @@ st_folium(mapa, width='stretch', height=450)
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# DETALLE DE AVANCE POR ACTIVIDAD (NOMBRES IDÉNTICOS A LA BASE DE DATOS)
+# ITT: SEGUIMIENTO DE INDICADORES Y ACTIVIDADES DESDE EL MONITORING TOOL
 # -----------------------------------------------------------------------------
-resultados_dinamicos = (
-    df_filtered[df_filtered['Unicos_General'] == 1]
-    .groupby('Actividad_Texto')['Unicos_General']
-    .sum()
-    .to_dict()
+st.subheader(
+    'Seguimiento de Indicadores y Actividades (Monitoring Tool - ITT)'
 )
 
-todos_acts = []
-for nombre_act, config in MAPA_ACTIVIDADES_AICS.items():
-    res_val = int(resultados_dinamicos.get(nombre_act, 0))
-    meta_val = config['meta']
-    tipo_meta = config['tipo']
+if not df_itt.empty:
+    # Calcular % de avance para cada indicador/actividad del ITT
+    df_itt['% Avance'] = df_itt.apply(
+        lambda row: (
+            f"{(row['Real'] / row['Meta']) * 100:.1f}%"
+            if row['Meta'] > 0
+            else '0.0%'
+        ),
+        axis=1,
+    )
+    df_itt = df_itt.rename(
+        columns={
+            'Indicador_Actividad': 'Indicador / Actividad',
+            'Real': 'Resultado Real',
+        }
+    )
 
-    if tipo_meta == 'porcentaje':
-        alc = res_val if res_val <= meta_val else 100.0
-    else:
-        alc = (res_val / meta_val) * 100 if meta_val > 0 else 0
+    st.dataframe(
+        df_itt[['Indicador / Actividad', 'Tipo', 'Meta', 'Resultado Real', '% Avance']],
+        width='stretch',
+        hide_index=True,
+    )
 
-    todos_acts.append({
-        'Codigo': config['codigo'],
-        'Actividad': nombre_act,
-        'Resultado_Mes': res_val,
-        'Meta': meta_val,
-        '% Avance': f'{alc:.1f}%',
-    })
+    # Gráfico de barras comparativo para Actividades del ITT
+    df_actividades_itt = df_itt[
+        df_itt['Indicador / Actividad'].str.contains('Actividad', na=False)
+    ].copy()
+    if not df_actividades_itt.empty:
+        st.subheader('Comparativa ITT: Resultado Real vs Meta (Actividades)')
 
-summary_final = pd.DataFrame(todos_acts)
-
-st.subheader('Detalle de Avance por Actividad')
-st.dataframe(
-    summary_final[['Codigo', 'Actividad', 'Resultado_Mes', 'Meta', '% Avance']],
-    width='stretch',
-    hide_index=True,
-)
+        fig_itt = go.Figure()
+        fig_itt.add_trace(
+            go.Bar(
+                y=df_actividades_itt['Indicador / Actividad'],
+                x=df_actividades_itt['Resultado Real'],
+                name='Resultado Real',
+                orientation='h',
+                text=df_actividades_itt['Resultado Real'],
+                textposition='outside',
+                marker_color=COLOR_VERDE_COOPI,
+            )
+        )
+        fig_itt.add_trace(
+            go.Bar(
+                y=df_actividades_itt['Indicador / Actividad'],
+                x=df_actividades_itt['Meta'],
+                name='Meta Oficial',
+                orientation='h',
+                text=df_actividades_itt['Meta'],
+                textposition='outside',
+                marker_color=COLOR_AZUL_COOPI,
+            )
+        )
+        fig_itt.update_layout(
+            barmode='group',
+            font=font_layout,
+            xaxis_title='Cantidad',
+            yaxis_title='Actividad',
+            legend=dict(
+                orientation='h',
+                yanchor='top',
+                y=-0.3,
+                xanchor='center',
+                x=0.5,
+            ),
+            height=600,
+        )
+        st.plotly_chart(fig_itt, width='stretch')
+else:
+    st.info('No se encontraron datos en la hoja "Tabla de indicadores (ITT)".')
 
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# CAPÍTULO: RESULTADO DE PROTECCIÓN (Año 2026, Proyecto AICS)
+# CAPÍTULO: RESULTADO DE PROTECCIÓN
 # -----------------------------------------------------------------------------
 st.subheader('Resultado de protección')
 
+df_prot_kobo = (
+    df_raw[df_raw['Sector'] == 'Protección']
+    if not df_raw.empty and 'Sector' in df_raw.columns
+    else pd.DataFrame()
+)
 if not df_prot_kobo.empty:
     df_proteccion_2026 = (
         df_prot_kobo[df_prot_kobo['Fecha_DT'].dt.year == 2026].copy()
@@ -720,16 +741,13 @@ if not df_prot_kobo.empty:
         fig_prot.update_layout(
             font=font_layout,
             xaxis_title='Tipo de Servicio de Protección',
-            yaxis_title='Cantidad_Casos',
+            yaxis_title='Cantidad de Casos',
             legend=dict(
                 orientation='h', yanchor='top', y=-0.25, xanchor='center', x=0.5
             ),
         )
         st.plotly_chart(fig_prot, width='stretch')
     else:
-        st.info(
-            'No hay registros de servicios de protección para el año 2026 bajo'
-            ' el proyecto AICS.'
-        )
+        st.info('No hay registros de protección para el año 2026.')
 else:
     st.info('No hay datos disponibles para el capítulo de protección.')
