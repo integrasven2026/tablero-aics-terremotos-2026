@@ -471,7 +471,7 @@ col_d.metric('Participantes con Discapacidad', f'{total_discapacidad:,}')
 st.markdown('---')
 
 # -----------------------------------------------------------------------------
-# GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS (CON PORCENTAJES)
+# GRÁFICOS: RANGO ETARIO Y SEXO / MUNICIPIOS (LEYENDA ABAJO)
 # -----------------------------------------------------------------------------
 g1, g2 = st.columns(2)
 
@@ -517,10 +517,16 @@ with g1:
         )
         fig_demo.update_traces(textposition='outside')
         fig_demo.update_layout(
-            showlegend=True,
             font=font_layout,
             xaxis_title='Rango Etario',
             yaxis_title='Cantidad',
+            legend=dict(
+                orientation='h',
+                yanchor='top',
+                y=-0.25,
+                xanchor='center',
+                x=0.5,
+            ),
         )
         st.plotly_chart(fig_demo, width='stretch')
     else:
@@ -557,7 +563,15 @@ with g2:
         )
         fig_muni.update_traces(textposition='outside')
         fig_muni.update_layout(
-            showlegend=True, font=font_layout, yaxis_title='Municipio'
+            font=font_layout,
+            yaxis_title='Municipio',
+            legend=dict(
+                orientation='h',
+                yanchor='top',
+                y=-0.25,
+                xanchor='center',
+                x=0.5,
+            ),
         )
         st.plotly_chart(fig_muni, width='stretch')
     else:
@@ -691,7 +705,9 @@ fig_ind.update_layout(
     font=font_layout,
     xaxis_title='Cantidad / Porcentaje',
     yaxis_title='Actividad',
-    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    legend=dict(
+        orientation='h', yanchor='top', y=-0.25, xanchor='center', x=0.5
+    ),
     height=650,
 )
 
@@ -744,10 +760,12 @@ if not df_prot_kobo.empty:
         )
         fig_prot.update_traces(textposition='outside')
         fig_prot.update_layout(
-            showlegend=False,
             font=font_layout,
             xaxis_title='Tipo de Servicio de Protección',
             yaxis_title='Cantidad_Casos',
+            legend=dict(
+                orientation='h', yanchor='top', y=-0.25, xanchor='center', x=0.5
+            ),
         )
         st.plotly_chart(fig_prot, width='stretch')
     else:
