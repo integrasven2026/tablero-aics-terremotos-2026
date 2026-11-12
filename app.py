@@ -245,20 +245,21 @@ def cargar_datos_excel(
         muni = MAPA_MUNICIPIOS.get(muni_raw, muni_raw or 'Libertador')
 
         campamento = 'No especificado'
+
+        # Clasificación estricta por id_resul oficial (R1 = WASH, R2 = Protección)
+        id_resul_val = str(
+            row.get('AICS - SISTEMA INTEGRAL DE G.id_resul') or ''
+        ).strip().upper()
         resultado_raw = str(
-            row.get('AICS - SISTEMA INTEGRAL DE G.Resultado:')
-            or row.get('Resultado:')
-            or 'WASH'
-        ).lower()
-        sector = (
-            'WASH'
-            if (
-                'wash' in resultado_raw
-                or 'agua' in resultado_raw
-                or 'r1' in resultado_raw
-            )
-            else 'Protección'
-        )
+            row.get('AICS - SISTEMA INTEGRAL DE G.Resultado:') or ''
+        ).upper()
+
+        if 'R1' in id_resul_val or 'WASH' in resultado_raw:
+            sector = 'WASH'
+        elif 'R2' in id_resul_val or 'PROTECCIÓN' in resultado_raw or 'PROTECCION' in resultado_raw:
+            sector = 'Protección'
+        else:
+            sector = 'Protección' if 'PROTECCIÓN' in resultado_raw else 'WASH'
 
         actividad_texto = str(row.get('group_act.Actividad:') or '').strip()
         tipo_serv = clasificar_servicio(actividad_texto)
@@ -425,7 +426,7 @@ conteo_disc = (
 )
 total_discapacidad = int(conteo_disc.get('Sí', 0))
 
-# Métricas específicas validadas por Sector
+# Métricas específicas validadas por Sector sobre los únicos
 total_unicos_wash = int(
     df_unicos_rows[df_unicos_rows['Sector'] == 'WASH'][
         'Unicos_General'
