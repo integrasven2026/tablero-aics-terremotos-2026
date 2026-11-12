@@ -148,7 +148,6 @@ COORDENADAS_MUNICIPIOS = {
     'Vargas': [10.6000, -66.9333],
 }
 
-# MAPA EXCLUSIVO DE ACTIVIDADES OFICIALES DEL PROYECTO AICS
 MAPA_ACTIVIDADES_AICS = {
     '1.1': (
         'Actividad 1.1: Promoción de higiene y distribución de artículos'
@@ -195,10 +194,12 @@ def clasificar_servicio(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE EL EXCEL OFICIAL DE NOVIEMBRE
+# 2. CARGA DE DATOS DESDE EL EXCEL OFICIAL ACTUALIZADO
 # -----------------------------------------------------------------------------
 @st.cache_data
-def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
+def cargar_datos_excel(
+    excel_path='BBDD SIGA AICS Noviembre_2026_tablero_.xlsx',
+):
     if not os.path.exists(excel_path):
         st.warning(f'⚠️ No se encontró el archivo {excel_path} en la raíz.')
         return pd.DataFrame()
@@ -263,7 +264,6 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
         tipo_serv = clasificar_servicio(actividad_texto)
         id_unico = f'ID_{codigo_id}'
 
-        # Sexo
         val_sexo = str(row.get('Sexo') or 'Mujer').strip().title()
         if 'Hombre' in val_sexo or val_sexo == 'H':
             sexo = 'Hombre'
@@ -276,7 +276,6 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
             row.get('rango_etario') or '18 a 49 años'
         ).strip().title()
 
-        # Discapacidad
         val_disc = str(
             row.get('Persona con Discapacidad') or 'No'
         ).strip().lower()
@@ -297,7 +296,6 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
                 ind_val = k_ind
                 break
 
-        # Mapeo preciso de actividad por código o texto
         if '1.2' in actividad_texto or 'higiene' in actividad_texto.lower():
             ind_val = '1.1'
         elif '2.1' in actividad_texto and 'grupal' in actividad_texto.lower():
@@ -307,7 +305,6 @@ def cargar_datos_excel(excel_path='BBDD SIGA AICS Noviembre_2026_tablero.xlsx'):
         elif '2.5' in actividad_texto or 'legal' in actividad_texto.lower():
             ind_val = '2.3'
 
-        # Unicidad general oficial del Excel
         try:
             val_u = row.get('BENEFICIARIOS UNICOS GENERAL') or 0
             val_unicos_gen = int(float(val_u))
