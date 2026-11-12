@@ -194,14 +194,18 @@ def clasificar_servicio(val):
 
 
 # -----------------------------------------------------------------------------
-# 2. CARGA DE DATOS DESDE EL EXCEL OFICIAL ACTUALIZADO
+# 2. CARGA DE DATOS DESDE EL EXCEL OFICIAL CORREGIDO (HEADER=0)
 # -----------------------------------------------------------------------------
 @st.cache_data
 def cargar_datos_excel(
-    excel_path='BBDD SIGA AICS Noviembre_2026_tablero_.xlsx',
+    excel_path='BBDD_SIGA_AICS_Noviembre_2026_Corregido-v1.xlsx',
 ):
     if not os.path.exists(excel_path):
-        st.warning(f'⚠️ No se encontró el archivo {excel_path} en la raíz.')
+        # Intentar con el nombre alternativo si no está presente
+        excel_path = 'BBDD SIGA AICS Noviembre_2026_tablero_.xlsx'
+    
+    if not os.path.exists(excel_path):
+        st.warning(f'⚠️ No se encontró ningún archivo Excel en la raíz del repositorio.')
         return pd.DataFrame()
 
     try:
@@ -211,10 +215,12 @@ def cargar_datos_excel(
             if 'group_beneficiario' in xls.sheet_names
             else xls.sheet_names[0]
         )
-        df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=5)
+        df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=0)
     except Exception as e:
         st.error(f'Error al leer el archivo Excel: {e}')
         return pd.DataFrame()
+
+    df_raw.columns = df_raw.columns.str.strip()
 
     registros = []
     for idx, row in df_raw.iterrows():
@@ -697,7 +703,7 @@ if not df_prot_kobo.empty:
         total_casos_prot = len(df_proteccion_2026)
         total_unicos_prot = int(
             df_proteccion_2026['Unicos_General'].sum()
-        )  # Corregido usando unicos general
+        )
 
         col_p1, col_p2 = st.columns(2)
         col_p1.metric('Total de Casos', f'{total_casos_prot:,}')
