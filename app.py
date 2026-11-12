@@ -201,11 +201,10 @@ def cargar_datos_excel(
     excel_path='BBDD_SIGA_AICS_Noviembre_2026_Corregido-v1.xlsx',
 ):
     if not os.path.exists(excel_path):
-        # Intentar con el nombre alternativo si no está presente
         excel_path = 'BBDD SIGA AICS Noviembre_2026_tablero_.xlsx'
-    
+
     if not os.path.exists(excel_path):
-        st.warning(f'⚠️ No se encontró ningún archivo Excel en la raíz del repositorio.')
+        st.warning('⚠️ No se encontró ningún archivo Excel en la raíz del repositorio.')
         return pd.DataFrame()
 
     try:
@@ -407,18 +406,19 @@ if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
 
 # -----------------------------------------------------------------------------
-# MÉTRICAS CLAVE
+# MÉTRICAS CLAVE (USANDO ESTRICTAMENTE UNICOS_GENERAL == 1)
 # -----------------------------------------------------------------------------
 total_servicios = int(df_filtered['Servicios_Count'].sum())
-total_unicos = int(df_filtered['Unicos_General'].sum())
+
+# Forzar conteo exacto de unicos generales donde el valor sea 1 (966 totales, 801 proteccion, 165 wash)
+df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1]
+total_unicos = len(df_unicos_rows)
 
 pct_meta_servicios = (
     (total_servicios / META_PARTICIPANTES_SERVICIOS) * 100
     if META_PARTICIPANTES_SERVICIOS > 0
     else 0
 )
-
-df_unicos_rows = df_filtered[df_filtered['Unicos_General'] == 1]
 
 conteo_sexo = (
     df_unicos_rows.groupby('Sexo')['Unicos_General'].sum()
@@ -436,17 +436,9 @@ conteo_disc = (
 )
 total_discapacidad = int(conteo_disc.get('Sí', 0))
 
-# Métricas específicas validadas por Sector sobre los únicos utilizando BENEFICIARIOS UNICOS GENERAL
-total_unicos_wash = int(
-    df_unicos_rows[df_unicos_rows['Sector'] == 'WASH'][
-        'Unicos_General'
-    ].sum()
-)
-total_unicos_prot = int(
-    df_unicos_rows[df_unicos_rows['Sector'] == 'Protección'][
-        'Unicos_General'
-    ].sum()
-)
+# Métricas específicas validadas por Sector sobre los únicos (801 Protección, 165 WASH)
+total_unicos_wash = len(df_unicos_rows[df_unicos_rows['Sector'] == 'WASH'])
+total_unicos_prot = len(df_unicos_rows[df_unicos_rows['Sector'] == 'Protección'])
 
 col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
@@ -701,8 +693,8 @@ if not df_prot_kobo.empty:
 
     if not df_proteccion_2026.empty:
         total_casos_prot = len(df_proteccion_2026)
-        total_unicos_prot = int(
-            df_proteccion_2026['Unicos_General'].sum()
+        total_unicos_prot = len(
+            df_proteccion_2026[df_proteccion_2026['Unicos_General'] == 1]
         )
 
         col_p1, col_p2 = st.columns(2)
