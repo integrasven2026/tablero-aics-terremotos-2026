@@ -101,7 +101,7 @@ st.markdown('---')
 
 # METAS OFICIALES DEL PROYECTO
 META_PARTICIPANTES_SERVICIOS = 4800
-META_PARTICIPANTES_UNICOS = 969
+META_PARTICIPANTES_UNICOS = 966
 
 MESES_ES = {
     1: 'Enero',
@@ -425,13 +425,33 @@ conteo_disc = (
 )
 total_discapacidad = int(conteo_disc.get('Sí', 0))
 
+# Métricas específicas validadas por Sector
+total_unicos_wash = int(
+    df_unicos_rows[df_unicos_rows['Sector'] == 'WASH'][
+        'Unicos_General'
+    ].sum()
+)
+total_unicos_prot = int(
+    df_unicos_rows[df_unicos_rows['Sector'] == 'Protección'][
+        'Unicos_General'
+    ].sum()
+)
+
 col1, col2, col3 = st.columns(3)
 col1.metric('Total de Participantes (Servicios)', f'{total_servicios:,}')
-col2.metric('Participantes Únicos', f'{total_unicos:,}')
+col2.metric('Participantes Únicos Totales', f'{total_unicos:,}')
 col3.metric(
     '% Alcance de la Meta (4.800 serv.)',
     f'{pct_meta_servicios:.2f}%',
     delta=f'{total_servicios:,} / {META_PARTICIPANTES_SERVICIOS:,}',
+)
+
+col_w, col_p = st.columns(2)
+col_w.metric(
+    'Participantes Únicos WASH (Resultado 1)', f'{total_unicos_wash:,}'
+)
+col_p.metric(
+    'Participantes Únicos Protección (Resultado 2)', f'{total_unicos_prot:,}'
 )
 
 col_m, col_h, col_o, col_d = st.columns(4)
