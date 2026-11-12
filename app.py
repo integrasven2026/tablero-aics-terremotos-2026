@@ -170,7 +170,6 @@ def clasificar_servicio(val):
 def cargar_datos_completos(
     excel_path='BBDD_SIGA_AICS_Noviembre_2026_Corregido-v1.xlsx',
 ):
-    # Cargar ITT desde el Monitoring Tool si está disponible
     itt_path = 'Monitoring_tool_AICS_ (5).xlsx'
     df_itt = pd.DataFrame()
     if os.path.exists(itt_path):
@@ -198,7 +197,6 @@ def cargar_datos_completos(
         except Exception:
             pass
 
-    # Cargar base de datos principal de beneficiarios
     if not os.path.exists(excel_path):
         excel_path = 'BBDD SIGA AICS Noviembre_2026_tablero_.xlsx'
 
@@ -354,6 +352,10 @@ sexo_sel = st.sidebar.selectbox('Sexo del Participante:', sexo_disp, index=0)
 rango_disp = ['Todos'] + sorted(df_raw['Rango_Etario'].unique().tolist())
 rango_sel = st.sidebar.selectbox('Rango Etario:', rango_disp, index=0)
 
+# NUEVO FILTRO: Persona con Discapacidad
+disc_disp = ['Todos', 'Sí', 'No']
+disc_sel = st.sidebar.selectbox('Persona con Discapacidad:', disc_disp, index=0)
+
 df_filtered = df_raw.copy()
 if mes_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Mes_Reporte'] == mes_sel]
@@ -361,6 +363,8 @@ if sexo_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Sexo'] == sexo_sel]
 if rango_sel != 'Todos':
     df_filtered = df_filtered[df_filtered['Rango_Etario'] == rango_sel]
+if disc_sel != 'Todos':
+    df_filtered = df_filtered[df_filtered['Discapacidad'] == disc_sel]
 
 # -----------------------------------------------------------------------------
 # MÉTRICAS CLAVE
