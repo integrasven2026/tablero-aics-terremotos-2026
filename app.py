@@ -101,7 +101,7 @@ st.markdown('---')
 
 # METAS OFICIALES DEL PROYECTO
 META_PARTICIPANTES_SERVICIOS = 4800
-META_PARTICIPANTES_UNICOS = 969
+META_PARTICIPANTES_UNICOS = 966
 
 MESES_ES = {
     1: 'Enero',
@@ -256,7 +256,11 @@ def cargar_datos_excel(
 
         if 'R1' in id_resul_val or 'WASH' in resultado_raw:
             sector = 'WASH'
-        elif 'R2' in id_resul_val or 'PROTECCIÓN' in resultado_raw or 'PROTECCION' in resultado_raw:
+        elif (
+            'R2' in id_resul_val
+            or 'PROTECCIÓN' in resultado_raw
+            or 'PROTECCION' in resultado_raw
+        ):
             sector = 'Protección'
         else:
             sector = 'Protección' if 'PROTECCIÓN' in resultado_raw else 'WASH'
@@ -426,7 +430,7 @@ conteo_disc = (
 )
 total_discapacidad = int(conteo_disc.get('Sí', 0))
 
-# Métricas específicas validadas por Sector sobre los únicos
+# Métricas específicas validadas por Sector sobre los únicos utilizando BENEFICIARIOS UNICOS GENERAL
 total_unicos_wash = int(
     df_unicos_rows[df_unicos_rows['Sector'] == 'WASH'][
         'Unicos_General'
@@ -691,7 +695,9 @@ if not df_prot_kobo.empty:
 
     if not df_proteccion_2026.empty:
         total_casos_prot = len(df_proteccion_2026)
-        total_unicos_prot = df_proteccion_2026['Case_ID'].nunique()
+        total_unicos_prot = int(
+            df_proteccion_2026['Unicos_General'].sum()
+        )  # Corregido usando unicos general
 
         col_p1, col_p2 = st.columns(2)
         col_p1.metric('Total de Casos', f'{total_casos_prot:,}')
